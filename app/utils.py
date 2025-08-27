@@ -203,12 +203,34 @@ class Timer:
 
 def get_current_timestamp() -> str:
     """
-    Get current timestamp in ISO format.
+    Get current timestamp in ISO format with UTC timezone.
     
     Returns:
-        str: Current timestamp
+        str: Current timestamp in ISO format with timezone
     """
-    return datetime.utcnow().isoformat()
+    from datetime import timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_utc_datetime() -> datetime:
+    """
+    Get current datetime object in UTC timezone.
+    
+    Returns:
+        datetime: Current UTC datetime object with timezone info
+    """
+    from datetime import timezone
+    return datetime.now(timezone.utc)
+
+
+def get_utc_timestamp_str() -> str:
+    """
+    Alias for get_current_timestamp for clarity.
+    
+    Returns:
+        str: Current UTC timestamp as ISO string
+    """
+    return get_current_timestamp()
 
 
 # Global configuration instance
