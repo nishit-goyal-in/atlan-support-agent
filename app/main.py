@@ -16,7 +16,8 @@ from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from .utils import initialize_app, get_config, get_current_timestamp, sanitize_for_logging, ConfigurationError
@@ -56,6 +57,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Mount static files for test UI
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Request/Response logging and timing middleware
 @app.middleware("http")
@@ -245,9 +249,22 @@ async def root():
             "metrics": "/metrics",
             "evaluation": "/evaluation/{message_id}",
             "evaluation_metrics": "/evaluation/metrics",
-            "docs": "/docs"
+            "docs": "/docs",
+            "test_ui": "/ui"
         }
     }
+
+
+@app.get("/ui", response_class=HTMLResponse)
+async def test_ui():
+    """Serve the test UI for the Atlan Support Agent."""
+    try:
+        with open("static/index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Test UI not found")
+
 
 # Helper functions
 def convert_messages_to_history(messages: List) -> List[Dict[str, str]]:

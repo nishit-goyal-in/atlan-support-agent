@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlan Support Agent v2 - Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .header p {
+            margin: 0.5rem 0 0 0;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 1rem;
+            padding: 1rem;
+            max-height: calc(100vh - 100px);
+        }
+
+        .chat-panel, .evaluation-panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-panel {
+            flex: 1;
+        }
+
+        .evaluation-panel {
+            width: 400px;
+            min-width: 350px;
+        }
+
+        .panel-header {
+            background: #34495e;
+            color: white;
+            padding: 1rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn.secondary {
+            background: #95a5a6;
+        }
+
+        .btn.secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background: #fafbfc;
+        }
+
+        .message {
+            margin-bottom: 1rem;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .message.user {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 18px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #3498db;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #2c3e50;
+            border: 1px solid #e1e8ed;
+        }
+
+        .message-meta {
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            margin-top: 0.25rem;
+            padding: 0 1rem;
+        }
+
+        .input-area {
+            border-top: 1px solid #e1e8ed;
+            padding: 1rem;
+            background: white;
+        }
+
+        .input-form {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .session-input {
+            width: 200px;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            resize: none;
+        }
+
+        .send-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #219a52;
+        }
+
+        .send-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .evaluation-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .evaluation-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .eval-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .eval-message-id {
+            font-family: monospace;
+            font-size: 0.8rem;
+            background: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+
+        .eval-score {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .eval-score.excellent { color: #27ae60; }
+        .eval-score.good { color: #2ecc71; }
+        .eval-score.fair { color: #f39c12; }
+        .eval-score.poor { color: #e67e22; }
+        .eval-score.bad { color: #e74c3c; }
+
+        .eval-details {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-top: 0.5rem;
+        }
+
+        .eval-status {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .eval-status.pending { background: #ffeaa7; color: #fdcb6e; }
+        .eval-status.completed { background: #d1f2eb; color: #27ae60; }
+        .eval-status.failed { background: #fadbd8; color: #e74c3c; }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+
+        .loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e1e8ed;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .error {
+            background: #fadbd8;
+            color: #e74c3c;
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .routing-info {
+            background: #e8f4f8;
+            border: 1px solid #bee5eb;
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .routing-badge {
+            display: inline-block;
+            background: #17a2b8;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-right: 0.5rem;
+        }
+
+        .sources-info {
+            background: #f8f9fa;
+            border-left: 3px solid #28a745;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .performance-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #6c757d;
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #e9ecef;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .evaluation-panel {
+                width: 100%;
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Atlan Support Agent v2 - Test Interface</h1>
+        <p>Test the complete RAG pipeline with real-time evaluation monitoring</p>
+    </div>
+
+    <div class="container">
+        <!-- Chat Panel -->
+        <div class="chat-panel">
+            <div class="panel-header">
+                <span>💬 Chat Interface</span>
+                <div class="session-controls">
+                    <button class="btn secondary" onclick="clearChat()">Clear Chat</button>
+                    <button class="btn" onclick="newSession()">New Session</button>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <!-- Messages will be inserted here -->
+            </div>
+            
+            <div class="input-area">
+                <div class="input-form">
+                    <input 
+                        type="text" 
+                        class="session-input" 
+                        id="sessionInput" 
+                        placeholder="Session ID (optional)"
+                        value=""
+                    >
+                    <textarea 
+                        class="message-input" 
+                        id="messageInput" 
+                        placeholder="Type your message here..."
+                        rows="1"
+                        onkeydown="handleKeyPress(event)"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Evaluation Panel -->
+        <div class="evaluation-panel">
+            <div class="panel-header">
+                <span>📊 Live Evaluations</span>
+                <button class="btn secondary" onclick="refreshEvaluations()">Refresh</button>
+            </div>
+            
+            <div class="evaluation-content" id="evaluationContent">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <span>Waiting for conversations...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentSessionId = '';
+        let messageHistory = [];
+        let evaluationPollingInterval = null;
+        let activeMessageIds = new Set();
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            generateSessionId();
+            setupAutoResize();
+            console.log('Atlan Support Agent v2 Test Interface initialized');
+        });
+
+        // Session management
+        function generateSessionId() {
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substr(2, 5);
+            currentSessionId = `test_${timestamp}_${random}`;
+            document.getElementById('sessionInput').value = currentSessionId;
+            console.log('Generated session ID:', currentSessionId);
+        }
+
+        function newSession() {
+            generateSessionId();
+            clearChat();
+        }
+
+        function clearChat() {
+            messageHistory = [];
+            activeMessageIds.clear();
+            document.getElementById('chatMessages').innerHTML = '';
+            document.getElementById('evaluationContent').innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <span>Waiting for conversations...</span>
+                </div>
+            `;
+            if (evaluationPollingInterval) {
+                clearInterval(evaluationPollingInterval);
+                evaluationPollingInterval = null;
+            }
+        }
+
+        // Message handling
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function setupAutoResize() {
+            const textarea = document.getElementById('messageInput');
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+            });
+        }
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const sessionInput = document.getElementById('sessionInput');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            const sessionId = sessionInput.value.trim() || currentSessionId;
+            
+            // Update UI
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+            
+            // Add user message to chat
+            addMessageToChat('user', message);
+            messageInput.value = '';
+            messageInput.style.height = 'auto';
+            
+            try {
+                console.log('Sending message:', { message, sessionId });
+                
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: sessionId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Received response:', data);
+                
+                // Add assistant message to chat
+                addMessageToChat('assistant', data.response, data);
+                
+                // Track message for evaluation
+                if (data.message_id) {
+                    activeMessageIds.add(data.message_id);
+                    
+                    // Start polling for evaluations if not already running
+                    if (!evaluationPollingInterval) {
+                        startEvaluationPolling();
+                    }
+                }
+                
+                // Update current session ID if it was auto-generated
+                if (!sessionInput.value.trim()) {
+                    currentSessionId = data.session_id;
+                    sessionInput.value = currentSessionId;
+                }
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addErrorMessage(`Failed to send message: ${error.message}`);
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            }
+        }
+
+        function addMessageToChat(role, content, metadata = null) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            let messageHtml = `
+                <div class="message-content">${escapeHtml(content)}</div>
+                <div class="message-meta">
+                    ${new Date().toLocaleTimeString()}
+            `;
+            
+            if (metadata) {
+                messageHtml += `
+                    <div class="routing-info">
+                        <span class="routing-badge">${metadata.route_type}</span>
+                        Confidence: ${(metadata.confidence_score * 100).toFixed(1)}%
+                    </div>
+                `;
+                
+                if (metadata.sources && metadata.sources.length > 0) {
+                    messageHtml += `
+                        <div class="sources-info">
+                            📚 ${metadata.sources_count} source${metadata.sources_count !== 1 ? 's' : ''} used
+                        </div>
+                    `;
+                }
+                
+                if (metadata.performance) {
+                    messageHtml += `
+                        <div class="performance-info">
+                            <span>Total: ${metadata.performance.total_time_ms}ms</span>
+                            <span>RAG: ${metadata.performance.rag_search_time_ms}ms</span>
+                            <span>LLM: ${metadata.performance.llm_generation_time_ms}ms</span>
+                        </div>
+                    `;
+                }
+            }
+            
+            messageHtml += `</div>`;
+            messageDiv.innerHTML = messageHtml;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Store in history
+            messageHistory.push({
+                role,
+                content,
+                timestamp: new Date(),
+                metadata
+            });
+        }
+
+        function addErrorMessage(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            chatMessages.appendChild(errorDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Evaluation monitoring
+        function startEvaluationPolling() {
+            console.log('Starting evaluation polling...');
+            
+            evaluationPollingInterval = setInterval(async () => {
+                await pollEvaluations();
+            }, 3000); // Poll every 3 seconds
+            
+            // Initial poll
+            pollEvaluations();
+        }
+
+        async function pollEvaluations() {
+            if (activeMessageIds.size === 0) return;
+            
+            try {
+                for (const messageId of activeMessageIds) {
+                    const response = await fetch(`/evaluation/${messageId}`);
+                    
+                    if (response.ok) {
+                        const evaluation = await response.json();
+                        displayEvaluation(messageId, evaluation);
+                        // Remove from active polling once completed
+                        activeMessageIds.delete(messageId);
+                    } else if (response.status === 404) {
+                        // Evaluation not ready yet, continue polling
+                        displayPendingEvaluation(messageId);
+                    }
+                }
+            } catch (error) {
+                console.error('Error polling evaluations:', error);
+            }
+            
+            // Stop polling if no active messages
+            if (activeMessageIds.size === 0 && evaluationPollingInterval) {
+                clearInterval(evaluationPollingInterval);
+                evaluationPollingInterval = null;
+            }
+        }
+
+        function displayEvaluation(messageId, evaluation) {
+            const evaluationContent = document.getElementById('evaluationContent');
+            
+            // Remove any existing evaluation for this message
+            const existing = document.getElementById(`eval-${messageId}`);
+            if (existing) existing.remove();
+            
+            // Remove waiting message if present
+            const waitingMsg = evaluationContent.querySelector('.loading');
+            if (waitingMsg) waitingMsg.remove();
+            
+            const evalDiv = document.createElement('div');
+            evalDiv.className = 'evaluation-item';
+            evalDiv.id = `eval-${messageId}`;
+            
+            const scoreClass = getScoreClass(evaluation.overall_score);
+            
+            evalDiv.innerHTML = `
+                <div class="eval-header">
+                    <div class="eval-message-id">${messageId.substring(0, 8)}...</div>
+                    <div class="eval-score ${scoreClass}">${evaluation.overall_score.toFixed(2)}/5.0</div>
+                </div>
+                <div class="eval-details">
+                    <strong>Quality:</strong> ${evaluation.response_quality.overall_score}/5 |
+                    <strong>Flow:</strong> ${evaluation.conversation_flow.overall_score}/5 |
+                    <strong>Safety:</strong> ${evaluation.safety.within_scope ? '✅' : '❌'} |
+                    <strong>CX:</strong> ${evaluation.cx_quality.overall_score}/5
+                </div>
+                <div class="eval-status completed">Completed</div>
+                <div style="font-size: 0.75rem; color: #6c757d; margin-top: 0.5rem;">
+                    Evaluated at ${new Date(evaluation.timestamp).toLocaleTimeString()}
+                </div>
+            `;
+            
+            // Insert at the top of evaluation content
+            if (evaluationContent.firstChild) {
+                evaluationContent.insertBefore(evalDiv, evaluationContent.firstChild);
+            } else {
+                evaluationContent.appendChild(evalDiv);
+            }
+        }
+
+        function displayPendingEvaluation(messageId) {
+            const evaluationContent = document.getElementById('evaluationContent');
+            
+            // Check if already displayed
+            if (document.getElementById(`eval-pending-${messageId}`)) return;
+            
+            // Remove waiting message if present
+            const waitingMsg = evaluationContent.querySelector('.loading');
+            if (waitingMsg) waitingMsg.remove();
+            
+            const evalDiv = document.createElement('div');
+            evalDiv.className = 'evaluation-item';
+            evalDiv.id = `eval-pending-${messageId}`;
+            
+            evalDiv.innerHTML = `
+                <div class="eval-header">
+                    <div class="eval-message-id">${messageId.substring(0, 8)}...</div>
+                    <div class="loading">
+                        <div class="loading-spinner"></div>
+                    </div>
+                </div>
+                <div class="eval-details">Evaluation in progress...</div>
+                <div class="eval-status pending">Pending</div>
+            `;
+            
+            evaluationContent.appendChild(evalDiv);
+        }
+
+        function getScoreClass(score) {
+            if (score >= 4.5) return 'excellent';
+            if (score >= 4.0) return 'good';
+            if (score >= 3.5) return 'fair';
+            if (score >= 3.0) return 'poor';
+            return 'bad';
+        }
+
+        async function refreshEvaluations() {
+            console.log('Manually refreshing evaluations...');
+            await pollEvaluations();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Expose functions to global scope for onclick handlers
+        window.sendMessage = sendMessage;
+        window.newSession = newSession;
+        window.clearChat = clearChat;
+        window.refreshEvaluations = refreshEvaluations;
+        window.handleKeyPress = handleKeyPress;
+    </script>
+</body>
+</html>
