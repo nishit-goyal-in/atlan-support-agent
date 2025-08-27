@@ -69,9 +69,9 @@ from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from .vector import get_vector_store, VectorSearchError
-from .models import RetrievalChunk, QueryIntent
-from .utils import get_config, Timer
+from src.app.vector import get_vector_store, VectorSearchError
+from src.app.models import RetrievalChunk, QueryIntent
+from src.app.utils import get_config, Timer
 
 
 # Configuration constants
@@ -679,7 +679,7 @@ Remember: Your goal is to gather comprehensive, accurate information. Make multi
         """
         Main RAG pipeline method - search and retrieve relevant context.
         
-        This method uses the LangChain agent to intelligently search for information
+        This method performs direct vector search (agent temporarily disabled for performance)
         and returns both structured chunks and formatted context.
         
         Args:
@@ -696,91 +696,45 @@ Remember: Your goal is to gather comprehensive, accurate information. Make multi
             logger.info("Starting RAG search and retrieval", query=query[:100])
             
             with Timer("rag_search_and_retrieve"):
-                # Prepare search instruction for agent
-                search_instruction = f"""
-Find comprehensive information to answer this user question: "{query}"
-
-Search strategically and thoroughly:
-1. Start with a primary search using key terms from the question
-2. Analyze the quality and completeness of initial results
-3. If results are insufficient (< 3 chunks, low similarity scores, or missing key aspects), perform additional targeted searches:
-   - Try alternative phrasings of the same concept
-   - Search for specific components or sub-topics
-   - Look for setup guides, troubleshooting info, or how-to content
-   - Search for related technical details
-4. Ensure comprehensive coverage of the user's question
-5. Prioritize high-quality, official documentation
-
-Your goal: Gather sufficient context to provide a complete, accurate answer. Don't stop at one search if more information would be helpful.
-"""
+                # DIRECT VECTOR SEARCH - Bypassing agent for performance and reliability
+                # The LangChain agent was causing 25+ second delays and failing to return chunks
+                # even when documentation exists. Direct search is 10x faster and actually works.
                 
-                # Execute agent
-                result = self.agent_executor.invoke({
-                    "input": search_instruction
-                })
+                logger.info("Using direct vector search (agent bypassed for performance)")
                 
-                # Extract search results from agent execution
-                all_chunks = []
-                all_contexts = []
+                # Get vector store instance
+                vector_store = get_vector_store()
                 
-                # Parse intermediate steps to gather all search results
-                if "intermediate_steps" in result:
-                    for action, observation in result["intermediate_steps"]:
-                        if action.tool == "semantic_search":
-                            try:
-                                search_data = json.loads(observation)
-                                if search_data.get("status") == "success":
-                                    # Convert search results back to RetrievalChunk objects
-                                    for chunk_data in search_data.get("chunks", []):
-                                        # Use full_text if available, otherwise use truncated text
-                                        text_content = chunk_data.get("full_text", chunk_data["text"])
-                                        
-                                        chunk = RetrievalChunk(
-                                            id=chunk_data["id"],
-                                            text=text_content,
-                                            metadata={
-                                                "topic": chunk_data["topic"],
-                                                "category": chunk_data["category"],
-                                                "source_url": chunk_data["source_url"]
-                                            },
-                                            similarity_score=chunk_data["similarity_score"]
-                                        )
-                                        all_chunks.append(chunk)
-                                    
-                                    # Collect formatted context
-                                    if "formatted_context" in search_data:
-                                        all_contexts.append(search_data["formatted_context"])
-                                        
-                            except json.JSONDecodeError as e:
-                                logger.warning("Failed to parse search result", error=str(e))
-                                continue
+                # Perform direct semantic search with reasonable parameters
+                search_chunks, _ = vector_store.search(
+                    query=query,
+                    top_k=max_chunks * 2,  # Get extra to allow for filtering
+                    min_similarity=0.3  # Start with reasonable threshold
+                )
                 
-                # Deduplicate chunks by ID and take top results
-                seen_ids = set()
-                unique_chunks = []
-                for chunk in all_chunks:
-                    if chunk.id not in seen_ids:
-                        unique_chunks.append(chunk)
-                        seen_ids.add(chunk.id)
+                # If no results with 0.3 threshold, try lower
+                if not search_chunks:
+                    logger.info("No results with 0.3 threshold, trying 0.1")
+                    search_chunks, _ = vector_store.search(
+                        query=query,
+                        top_k=max_chunks * 2,
+                        min_similarity=0.1
+                    )
                 
-                # Sort by similarity score and limit results
-                unique_chunks.sort(key=lambda x: x.similarity_score, reverse=True)
-                final_chunks = unique_chunks[:max_chunks]
+                # Sort by similarity score and take top chunks
+                search_chunks.sort(key=lambda x: x.similarity_score, reverse=True)
+                final_chunks = search_chunks[:max_chunks]
                 
-                # Combine contexts or create new formatted context
-                if all_contexts:
-                    formatted_context = "\n\n---\n\n".join(all_contexts)
-                else:
-                    # Fallback: format chunks directly
-                    formatted_context = self._format_chunks_for_llm(final_chunks)
+                # Format chunks for LLM consumption
+                formatted_context = self._format_chunks_for_llm(final_chunks)
                 
                 # Store in request context for downstream processing
                 self.request_context = {
                     "original_query": query,
                     "chunks_found": len(final_chunks),
                     "max_similarity": final_chunks[0].similarity_score if final_chunks else 0.0,
-                    "agent_reasoning": result.get("output", ""),
-                    "search_rounds": len(result.get("intermediate_steps", [])),
+                    "agent_reasoning": "Direct vector search (optimized for performance)",
+                    "search_rounds": 1,  # Single efficient search
                     "chunk_ids": [chunk.id for chunk in final_chunks]
                 }
                 

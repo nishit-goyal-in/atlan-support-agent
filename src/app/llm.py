@@ -16,8 +16,8 @@ from openai import AsyncOpenAI
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
-from .utils import get_config, Timer
-from .models import RetrievalChunk
+from src.app.utils import get_config, Timer
+from src.app.models import RetrievalChunk
 
 
 class LLMError(Exception):

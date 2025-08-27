@@ -66,14 +66,14 @@ from loguru import logger
 from pinecone import Pinecone, Index, ServerlessSpec
 from openai import OpenAI
 
-from .models import (
+from src.app.models import (
     RetrievalChunk, 
     SearchResult, 
     SearchFilters, 
     QueryIntent, 
     DocumentCategory
 )
-from .utils import get_config, Timer
+from src.app.utils import get_config, Timer
 
 
 class VectorSearchError(Exception):

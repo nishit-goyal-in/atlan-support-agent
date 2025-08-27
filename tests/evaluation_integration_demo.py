@@ -13,16 +13,16 @@ from typing import Optional
 # Add the project root to the path
 sys.path.append('.')
 
-from app.utils import initialize_app
-from app.models import (
+from src.app.utils import initialize_app
+from src.app.models import (
     ChatRequest, Message, MessageRole, RouterResponse, RouteType,
     PerformanceMetrics, ResponseMetadata, RouterDecision, QueryComplexity
 )
-from app.evaluator import (
+from src.app.evaluator import (
     get_evaluator, evaluate_chat_response, EvaluationResult,
     EvaluationMetrics
 )
-from app.store import get_conversation_store
+from src.app.store import get_conversation_store
 from loguru import logger
 
 

@@ -7,13 +7,13 @@ Demonstrates the new Pydantic models and ConversationStore functionality.
 import asyncio
 import json
 from datetime import datetime
-from app.models import (
+from src.app.models import (
     Message, MessageRole, ChatRequest, ChatResponse, 
     Conversation, ConversationSummary, RouteType, 
     PerformanceMetrics, ResponseMetadata, RouterDecision,
     QueryComplexity
 )
-from app.store import ConversationStore, get_conversation_store
+from src.app.store import ConversationStore, get_conversation_store
 
 
 async def demo_models():

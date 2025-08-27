@@ -19,9 +19,9 @@ from pydantic import BaseModel, Field, ValidationError, validator
 from enum import Enum
 from loguru import logger
 
-from .utils import get_config, Timer
-from .models import RouterResponse, RouteType, RetrievalChunk, Message, MessageRole
-from .llm import get_llm_client, LLMError
+from src.app.utils import get_config, Timer
+from src.app.models import RouterResponse, RouteType, RetrievalChunk, Message, MessageRole
+from src.app.llm import get_llm_client, LLMError
 
 
 class EvaluationError(Exception):

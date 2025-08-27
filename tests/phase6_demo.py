@@ -17,13 +17,13 @@ from datetime import datetime
 from typing import Dict, Any
 
 # Import all the Phase 6 components
-from app.store import (
+from src.app.store import (
     get_conversation_store,
     EvaluationStatus,
     TaskPriority,
     EvaluationTask
 )
-from app.models import (
+from src.app.models import (
     Message, 
     MessageRole, 
     RouterResponse, 
@@ -34,7 +34,7 @@ from app.models import (
     QueryComplexity,
     RetrievalChunk
 )
-from app.evaluator import evaluate_chat_response
+from src.app.evaluator import evaluate_chat_response
 
 
 async def create_mock_router_response(

@@ -20,14 +20,14 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from .utils import initialize_app, get_config, get_current_timestamp, sanitize_for_logging, ConfigurationError
-from .models import (
+from src.app.utils import initialize_app, get_config, get_current_timestamp, sanitize_for_logging, ConfigurationError
+from src.app.models import (
     ChatRequest, ChatResponse, Conversation, ErrorResponse,
     EnhancedHealthResponse, SystemMetrics, MessageRole,
     RouterResponse
 )
-from .router import route_and_respond, RouterError
-from .store import get_conversation_store, TaskPriority
+from src.app.router import route_and_respond, RouterError
+from src.app.store import get_conversation_store, TaskPriority
 
 # Initialize logging and configuration
 initialize_app()
@@ -203,7 +203,7 @@ async def startup_event():
         
         # Validate vector store connection
         try:
-            from .vector import get_vector_store
+            from src.app.vector import get_vector_store
             vector_store = get_vector_store()
             # Test connection by getting index stats
             stats = vector_store.get_cache_stats()
@@ -214,7 +214,7 @@ async def startup_event():
         
         # Validate LLM API connection
         try:
-            from .llm import get_llm_client
+            from src.app.llm import get_llm_client
             llm_client = get_llm_client()
             # Test with a simple request
             test_response = await llm_client.generate_conversational_response("test", [])
@@ -525,7 +525,7 @@ async def health_check(http_request: Request) -> EnhancedHealthResponse:
         # Check vector store health
         try:
             start_time = time.time()
-            from .vector import get_vector_store
+            from src.app.vector import get_vector_store
             vector_store = get_vector_store()
             stats = vector_store.get_cache_stats()
             vector_latency = (time.time() - start_time) * 1000
@@ -553,7 +553,7 @@ async def health_check(http_request: Request) -> EnhancedHealthResponse:
         # Check LLM API health
         try:
             start_time = time.time()
-            from .llm import get_llm_client
+            from src.app.llm import get_llm_client
             llm_client = get_llm_client()
             # Simple health check call
             await llm_client.generate_conversational_response("health check", [])
@@ -974,42 +974,21 @@ async def get_evaluation_result(
                    message_id=message_id, 
                    overall_score=evaluation_result.overall_score)
         
-        return {
-            "evaluation_id": evaluation_result.evaluation_id,
-            "message_id": message_id,
-            "overall_score": evaluation_result.overall_score,
-            "evaluation_confidence": evaluation_result.evaluation_confidence,
-            "response_quality": {
-                "accuracy": evaluation_result.response_quality.accuracy,
-                "completeness": evaluation_result.response_quality.completeness,
-                "relevance": evaluation_result.response_quality.relevance
-            },
-            "conversation_flow": {
-                "context_retention": evaluation_result.conversation_flow.context_retention,
-                "coherence": evaluation_result.conversation_flow.coherence
-            },
-            "safety": {
-                "hallucination_free": evaluation_result.safety.hallucination_free,
-                "within_scope": evaluation_result.safety.within_scope
-            },
-            "routing_assessment": {
-                "timing_appropriate": evaluation_result.routing_assessment.timing_appropriate,
-                "reasoning_sound": evaluation_result.routing_assessment.reasoning_sound,
-                "confidence_calibrated": evaluation_result.routing_assessment.confidence_calibrated,
-                "route_type_correct": evaluation_result.routing_assessment.route_type_correct
-            },
-            "cx_quality": {
-                "tone": evaluation_result.cx_quality.tone,
-                "resolution_efficiency": evaluation_result.cx_quality.resolution_efficiency
-            },
-            "strengths": evaluation_result.strengths,
-            "weaknesses": evaluation_result.weaknesses,
-            "improvement_suggestions": evaluation_result.improvement_suggestions,
-            "source_relevance_score": evaluation_result.source_relevance_score,
-            "source_coverage_score": evaluation_result.source_coverage_score,
-            "performance_rating": evaluation_result.performance_rating,
-            "timestamp": evaluation_result.timestamp.isoformat()
-        }
+        # Use Pydantic's JSON serialization to handle datetime objects properly
+        evaluation_dict = evaluation_result.model_dump(mode='json')
+        
+        # Add message_id and format routing for UI compatibility
+        evaluation_dict["message_id"] = message_id
+        if "routing_assessment" in evaluation_dict:
+            routing = evaluation_dict["routing_assessment"]
+            evaluation_dict["routing"] = {
+                "timing_assessment": "correct" if routing.get("timing_appropriate") else "incorrect",
+                "reasoning_assessment": "sound" if routing.get("reasoning_sound") else "unsound",
+                "confidence_calibrated": routing.get("confidence_calibrated", False),
+                "route_type_correct": routing.get("route_type_correct", False)
+            }
+        
+        return evaluation_dict
         
     except HTTPException:
         raise

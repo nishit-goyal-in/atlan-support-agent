@@ -6,7 +6,7 @@ AI-Powered Customer Support Backend with RAG and Intelligent Routing
 __version__ = "2.0.0"
 
 # Main RAG Pipeline Entry Point - Phase 3 Complete
-from .rag import (
+from src.app.rag import (
     retrieve_and_format,
     RAGError,
     get_rag_agent,
@@ -18,7 +18,7 @@ from .rag import (
 )
 
 # Phase 4 Router - Query Classification and Routing
-from .router import (
+from src.app.router import (
     QueryRouter,
     QueryClassifier,
     route_and_respond,
@@ -26,7 +26,7 @@ from .router import (
 )
 
 # Phase 5 Store - Conversation and Metrics Storage
-from .store import (
+from src.app.store import (
     get_conversation_store,
     initialize_store, 
     ConversationStore,
@@ -34,7 +34,7 @@ from .store import (
 )
 
 # Phase 6 Evaluator - LLM-as-judge Evaluation System
-from .evaluator import (
+from src.app.evaluator import (
     get_evaluator,
     evaluate_chat_response,
     ResponseEvaluator,
@@ -48,13 +48,13 @@ from .evaluator import (
     CustomerExperienceScores
 )
 
-from .models import (
+from src.app.models import (
     RetrievalChunk, SearchResult, QueryIntent, RouterResponse, RouterDecision, 
     RouteType, QueryType, PerformanceMetrics, ResponseMetadata,
     ChatRequest, ChatResponse, ErrorResponse, EnhancedHealthResponse,
     SystemMetrics, Message, MessageRole, Conversation
 )
-from .utils import initialize_app
+from src.app.utils import initialize_app
 
 __all__ = [
     # RAG Pipeline (Phase 3)

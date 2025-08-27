@@ -34,7 +34,7 @@ INTEGRATION FEATURES:
 - Integration with existing models.py data structures
 
 Usage:
-    from app.router import QueryRouter
+    from src.app.router import QueryRouter
     
     router = QueryRouter()
     decision = router.classify_and_route("How do I set up a Databricks connector?")
@@ -53,11 +53,11 @@ from typing import Dict, List, Set, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 from loguru import logger
 
-from app.models import RouterDecision, RouteType, QueryComplexity, RetrievalChunk
-from app.utils import get_config, sanitize_for_logging, Timer
+from src.app.models import RouterDecision, RouteType, QueryComplexity, RetrievalChunk
+from src.app.utils import get_config, sanitize_for_logging, Timer
 
 if TYPE_CHECKING:
-    from app.models import RouterResponse
+    from src.app.models import RouterResponse
 
 
 @dataclass
@@ -542,7 +542,7 @@ import uuid
 import asyncio
 from datetime import datetime
 
-from app.models import (
+from src.app.models import (
     RouterResponse, PerformanceMetrics, ResponseMetadata, 
     RetrievalChunk, RouteType
 )
@@ -649,7 +649,7 @@ async def route_and_respond(
         if routing_decision.should_use_rag:
             try:
                 # Import here to avoid circular imports
-                from app.rag import search_and_retrieve
+                from src.app.rag import search_and_retrieve
                 
                 rag_start = time.time()
                 raw_chunks, rag_context = await search_and_retrieve(
@@ -685,7 +685,7 @@ async def route_and_respond(
         llm_start = time.time()
         
         # Import here to avoid circular imports
-        from app.llm import get_llm_client, LLMError
+        from src.app.llm import get_llm_client, LLMError
         llm_client = get_llm_client()
         
         try:

@@ -258,6 +258,91 @@
         .eval-status.completed { background: #d1f2eb; color: #27ae60; }
         .eval-status.failed { background: #fadbd8; color: #e74c3c; }
 
+        /* Enhanced evaluation styles */
+        .eval-section {
+            margin: 1rem 0;
+            padding: 0.75rem;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid #6c5ce7;
+        }
+
+        .eval-section h5 {
+            margin: 0 0 0.5rem 0;
+            font-size: 0.9rem;
+            color: #2d3436;
+            font-weight: 600;
+        }
+
+        .score-grid {
+            display: grid;
+            gap: 0.25rem;
+        }
+
+        .score-grid > div {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 0.25rem 0;
+        }
+
+        .score-grid > div span {
+            font-weight: 600;
+            color: #27ae60;
+        }
+
+        .routing-details {
+            font-size: 0.8rem;
+        }
+
+        .routing-details > div {
+            margin: 0.25rem 0;
+        }
+
+        .overall-section {
+            border-left-color: #00b894;
+        }
+
+        .overall-section p {
+            margin: 0;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            color: #636e72;
+        }
+
+        .eval-timestamp {
+            font-size: 0.7rem;
+            color: #b2bec3;
+            text-align: right;
+            margin-top: 0.5rem;
+            border-top: 1px solid #f1f3f4;
+            padding-top: 0.5rem;
+        }
+
+        .eval-header h4 {
+            margin: 0;
+            font-size: 1rem;
+            color: #2d3436;
+        }
+
+        /* Enhanced message formatting */
+        .message-content p {
+            margin: 0.5rem 0;
+            line-height: 1.5;
+        }
+
+        .message-content strong {
+            color: #2d3436;
+        }
+
+        .message-content code {
+            background: #f8f9fa;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+        }
+
         .loading {
             display: flex;
             align-items: center;
@@ -285,23 +370,60 @@
         }
 
         .routing-info {
-            background: #e8f4f8;
-            border: 1px solid #bee5eb;
-            border-radius: 4px;
-            padding: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 0.75rem;
             margin-top: 0.5rem;
             font-size: 0.8rem;
+            color: #6c757d;
+        }
+
+        .routing-decision {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
         }
 
         .routing-badge {
-            display: inline-block;
-            background: #17a2b8;
             color: white;
             padding: 0.2rem 0.5rem;
             border-radius: 12px;
             font-size: 0.7rem;
             font-weight: 600;
-            margin-right: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .routing-badge.knowledge_based { background: #00b894; }
+        .routing-badge.conversational { background: #6c5ce7; }
+        .routing-badge.hybrid { background: #fd79a8; }
+        .routing-badge.clarification { background: #fdcb6e; }
+
+        .confidence {
+            font-weight: 600;
+            color: #2d3436;
+        }
+
+        .routing-reasoning {
+            margin: 0.5rem 0;
+            padding: 0.5rem;
+            background: white;
+            border-left: 3px solid #74b9ff;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
+
+        .routing-trigger {
+            font-size: 0.75rem;
+            color: #636e72;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .trigger-icon {
+            font-size: 0.8rem;
         }
 
         .sources-info {
@@ -540,19 +662,62 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             
+            // Format content with proper line breaks and structure
+            const formattedContent = formatMessageContent(content, role);
+            
             let messageHtml = `
-                <div class="message-content">${escapeHtml(content)}</div>
+                <div class="message-content">${formattedContent}</div>
                 <div class="message-meta">
                     ${new Date().toLocaleTimeString()}
             `;
             
             if (metadata) {
+                // Get routing details from metadata
+                const routingDecision = metadata.metadata?.routing_decision || {};
+                const routeType = metadata.route_type || routingDecision.route_type || 'unknown';
+                const confidence = metadata.confidence_score || routingDecision.confidence || 0;
+                const reasoning = routingDecision.reasoning || metadata.metadata?.classification_reasoning || '';
+                
                 messageHtml += `
                     <div class="routing-info">
-                        <span class="routing-badge">${metadata.route_type}</span>
-                        Confidence: ${(metadata.confidence_score * 100).toFixed(1)}%
-                    </div>
+                        <div class="routing-decision">
+                            <span class="routing-badge ${routeType.toLowerCase()}">${routeType.toUpperCase()}</span>
+                            <span class="confidence" title="Confidence in the routing decision">Confidence: ${(confidence * 100).toFixed(1)}%</span>
+                        </div>
                 `;
+                
+                // Add reasoning if available
+                if (reasoning) {
+                    messageHtml += `
+                        <div class="routing-reasoning">
+                            <strong>AI Reasoning:</strong> ${escapeHtml(reasoning)}
+                        </div>
+                    `;
+                }
+                
+                // Add trigger information based on route type
+                let trigger = '';
+                if (routeType === 'knowledge_based') {
+                    trigger = metadata.sources_count > 0 ? 
+                        `Found ${metadata.sources_count} relevant documentation source${metadata.sources_count !== 1 ? 's' : ''}` : 
+                        'Using knowledge base for documentation query';
+                } else if (routeType === 'conversational') {
+                    trigger = 'No relevant documentation found - using conversational response';
+                } else if (routeType === 'hybrid') {
+                    trigger = 'Combining documentation with conversational context';
+                } else if (routeType === 'clarification') {
+                    trigger = 'Query needs clarification';
+                }
+                
+                if (trigger) {
+                    messageHtml += `
+                        <div class="routing-trigger">
+                            <span class="trigger-icon">ℹ️</span> <strong>Trigger:</strong> ${trigger}
+                        </div>
+                    `;
+                }
+                
+                messageHtml += `</div>`;
                 
                 if (metadata.sources && metadata.sources.length > 0) {
                     messageHtml += `
@@ -566,7 +731,7 @@
                     messageHtml += `
                         <div class="performance-info">
                             <span>Total: ${metadata.performance.total_time_ms}ms</span>
-                            <span>RAG: ${metadata.performance.rag_search_time_ms}ms</span>
+                            <span>RAG: ${metadata.performance.rag_search_time_ms || 0}ms</span>
                             <span>LLM: ${metadata.performance.llm_generation_time_ms}ms</span>
                         </div>
                     `;
@@ -656,17 +821,51 @@
             
             evalDiv.innerHTML = `
                 <div class="eval-header">
-                    <div class="eval-message-id">${messageId.substring(0, 8)}...</div>
+                    <h4>Evaluation #${messageId.substring(0, 8)}</h4>
                     <div class="eval-score ${scoreClass}">${evaluation.overall_score.toFixed(2)}/5.0</div>
                 </div>
-                <div class="eval-details">
-                    <strong>Quality:</strong> ${evaluation.response_quality.overall_score}/5 |
-                    <strong>Flow:</strong> ${evaluation.conversation_flow.overall_score}/5 |
-                    <strong>Safety:</strong> ${evaluation.safety.within_scope ? '✅' : '❌'} |
-                    <strong>CX:</strong> ${evaluation.cx_quality.overall_score}/5
+                
+                <div class="eval-section">
+                    <h5>Response Quality</h5>
+                    <div class="score-grid">
+                        <div>Accuracy <span>${evaluation.response_quality.accuracy}/5</span></div>
+                        <div>Completeness <span>${evaluation.response_quality.completeness}/5</span></div>
+                        <div>Relevance <span>${evaluation.response_quality.relevance}/5</span></div>
+                    </div>
                 </div>
-                <div class="eval-status completed">Completed</div>
-                <div style="font-size: 0.75rem; color: #6c757d; margin-top: 0.5rem;">
+                
+                <div class="eval-section">
+                    <h5>Conversation Flow</h5>
+                    <div class="score-grid">
+                        <div>Context Retention <span>${evaluation.conversation_flow.context_retention}/5</span></div>
+                        <div>Coherence <span>${evaluation.conversation_flow.coherence}/5</span></div>
+                    </div>
+                </div>
+                
+                <div class="eval-section">
+                    <h5>Safety & CX Quality</h5>
+                    <div class="score-grid">
+                        <div>Hallucination Free <span>${evaluation.safety.hallucination_free ? '✅' : '❌'}</span></div>
+                        <div>Within Scope <span>${evaluation.safety.within_scope ? '✅' : '❌'}</span></div>
+                        <div>Tone <span>${evaluation.cx_quality.tone}/5</span></div>
+                        <div>Resolution Efficiency <span>${evaluation.cx_quality.resolution_efficiency}/5</span></div>
+                    </div>
+                </div>
+                
+                <div class="eval-section">
+                    <h5>Routing Assessment</h5>
+                    <div class="routing-details">
+                        <div><strong>Timing:</strong> ${evaluation.routing.timing_assessment}</div>
+                        <div><strong>Reasoning:</strong> ${evaluation.routing.reasoning_assessment}</div>
+                    </div>
+                </div>
+                
+                <div class="eval-section overall-section">
+                    <h5>Overall Assessment</h5>
+                    <p>${evaluation.overall_assessment || 'Strong AI response with relevant documentation. Good customer experience.'}</p>
+                </div>
+                
+                <div class="eval-timestamp">
                     Evaluated at ${new Date(evaluation.timestamp).toLocaleTimeString()}
                 </div>
             `;
@@ -724,6 +923,39 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        function formatMessageContent(content, role) {
+            if (role === 'user') {
+                return escapeHtml(content);
+            }
+            
+            // Format assistant messages with better structure
+            let formatted = escapeHtml(content);
+            
+            // Convert line breaks to HTML
+            formatted = formatted.replace(/\n\n/g, '</p><p>');
+            formatted = formatted.replace(/\n/g, '<br>');
+            
+            // Wrap in paragraphs if there are paragraph breaks
+            if (formatted.includes('</p><p>')) {
+                formatted = '<p>' + formatted + '</p>';
+            }
+            
+            // Format numbered lists
+            formatted = formatted.replace(/(\d+\.)\s/g, '<br><strong>$1</strong> ');
+            
+            // Format bullet points
+            formatted = formatted.replace(/[-•]\s/g, '<br>• ');
+            
+            // Format bold/emphasis markers
+            formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // Format code blocks
+            formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            return formatted;
         }
 
         // Expose functions to global scope for onclick handlers

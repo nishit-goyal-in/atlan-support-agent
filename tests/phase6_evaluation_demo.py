@@ -18,12 +18,12 @@ from typing import List, Dict, Any
 # Add the project root to the path
 sys.path.append('.')
 
-from app.utils import initialize_app, get_config
-from app.models import (
+from src.app.utils import initialize_app, get_config
+from src.app.models import (
     RouterResponse, RouteType, PerformanceMetrics, ResponseMetadata, 
     Message, MessageRole, RetrievalChunk, RouterDecision, QueryComplexity
 )
-from app.evaluator import (
+from src.app.evaluator import (
     get_evaluator, evaluate_chat_response, ResponseEvaluator,
     EvaluationResult, EvaluationMetrics, EvaluationError,
     ResponseQualityScores, ConversationFlowScores, SafetyAssessment,

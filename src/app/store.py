@@ -28,7 +28,7 @@ from typing import Dict, List, Optional, Tuple, Any, Callable
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from .models import (
+from src.app.models import (
     Conversation, 
     ConversationSummary, 
     Message, 
@@ -37,7 +37,7 @@ from .models import (
     PerformanceMetrics,
     RouterResponse
 )
-from .evaluator import EvaluationResult, EvaluationError, evaluate_chat_response
+from src.app.evaluator import EvaluationResult, EvaluationError, evaluate_chat_response
 
 
 class EvaluationStatus(str, Enum):

@@ -41,7 +41,7 @@ try:
     import pinecone
     from pinecone import Pinecone, ServerlessSpec
     from loguru import logger
-    from app.utils import setup_logging, get_config, Timer
+    from src.app.utils import setup_logging, get_config, Timer
     # Try to import tqdm for progress bars
     try:
         from tqdm import tqdm
