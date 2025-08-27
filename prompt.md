@@ -61,7 +61,7 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
 - python-dotenv
 - loguru
 
-## Hybrid Architecture (LangChain + Traditional RAG)
+## Architecture (LangChain + Traditional RAG)
 - LangChain agent handles ONLY the search tool (decides when/what to search)
 - Traditional prompt templates for answer generation and routing
 - Parallel processing for generation and routing after search completes
@@ -69,9 +69,9 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
 
 ## Configuration (.env)
 - `OPENROUTER_API_KEY=`
-- `GENERATION_MODEL=` (e.g., `anthropic/claude-3-5-sonnet`)
-- `ROUTING_MODEL=` (e.g., `anthropic/claude-3-haiku`)
-- `EVAL_MODEL=` (e.g., `anthropic/claude-3-5-sonnet`)
+- `GENERATION_MODEL=` (e.g., `openai/gpt-5-mini`) 
+- `ROUTING_MODEL=` (e.g., `openai/gpt-5-mini`)
+- `EVAL_MODEL=` (e.g., `openai/gpt-5-mini`) 
 - `RETRIEVAL_TOP_K=5`
 - `KNOWLEDGE_GAP_THRESHOLD=0.5` (if `max_similarity` < this, force escalate)
 - `REQUEST_TIMEOUT_SECONDS=4`
@@ -116,7 +116,7 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
   - `cx_quality`: `{ tone: 1-5, resolution_efficiency: 1-5 }`
   - `overall_notes`: str
 - `Message`: `{ id: str (UUID), role: 'user'|'assistant', content: str, timestamp: datetime }`
-- `ChatRequest`: `{ session_id: str, message: str }`
+- `ChatRequest`: `{ session_id: str, message: str }` 
 - `ChatResponse`:
   - `session_id: str`
   - `message: Message` (assistant)
@@ -140,7 +140,7 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
 ## Core Flow (Hybrid Approach)
 1. Receive message; append to session history (in-memory). Generate message ID (UUID).
 2. LangChain search agent determines if/what to search:
-   - Agent has access to `semantic_search` tool (Pinecone)
+   - Agent has access to `semantic_search` tool (Pinecone) 
    - Can make multiple searches if needed
    - Returns both formatted text AND raw RetrievalChunk objects
 3. Compute `max_similarity` from retrieved chunks.
@@ -167,12 +167,29 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
   - Metadata filtering: Apply category-specific filters when detected (see below)
   - Retrieval returns chunks with similarity scores normalized to [0,1]
 
-## Metadata Filtering Logic
-- Detect query intent and apply filters:
-  - If query contains "setup", "configure", "install" + connector name → filter by `category="Connectors"`
-  - If query contains "error", "troubleshoot", "failing" → filter by `category="Reference"`  
-  - If query contains "how to", "guide", "steps" → filter by `category="How-to Guides"`
-- Implementation in `vector.py` as `get_query_filters(query: str) -> dict`
+## Enhanced Metadata Filtering Logic
+- **Smart Query Analysis**: Extract entities, intents, and keywords from user queries
+  - Entity extraction: Detect connector names (Databricks, Snowflake, BigQuery, etc.)
+  - Intent detection: Setup, troubleshooting, how-to, general
+  - Keyword expansion: Map related terms (e.g., "sso" → ["oauth", "auth", "saml"])
+  
+- **Dynamic Filter Generation**: Build filters based on comprehensive analysis
+  - Topic fuzzy matching against extracted entities
+  - Keyword overlap scoring with expansion mappings
+  - Source URL depth analysis for content specificity
+  - Multi-factor scoring instead of rigid category filters
+
+- **Post-Search Re-ranking**: Combine vector similarity with metadata relevance
+  - Vector similarity weight: 70% (maintains semantic search quality)
+  - Metadata relevance weight: 30% (boosts contextually appropriate results)
+  - Considers topic relevance, keyword overlap, category match, and URL specificity
+
+- **Example Improvements**:
+  - Query: "Snowflake OAuth errors" 
+  - Old: Forces "Reference" category only, misses "Connectors" content
+  - New: Searches all categories, prioritizes Snowflake + OAuth topics, re-ranks by combined score
+
+- Implementation in `vector.py`: `analyze_query()`, `_build_smart_filters()`, `_score_metadata_match()`, `_rerank_results()`
 
 ## LangChain Search Tool Implementation
 - Tool definition:
@@ -185,12 +202,41 @@ Build a production-ready FastAPI backend that answers Atlan documentation questi
       # Return formatted text for LLM agent
       return formatted_text
   ```
-- Minimal agent system prompt (for search decisions only):
+- Minimal agent system prompt (for search decisions only): 
   ```
   You are a search assistant for Atlan support.
-  Use the semantic_search tool to find relevant documentation for technical questions.
-  For simple greetings or clarifications that don't require documentation, respond directly.
-  You can make multiple searches if the initial results aren't sufficient.
+  
+  Search Decision Process:
+  <step>
+  <action>Analyze query type</action>
+  <description>Determine if {user_query} requires documentation search or can be handled directly</description>
+  </step>
+  
+  <if_block condition='{user_query} is greeting or simple clarification'>
+  <step>
+  <action>Respond directly</action>
+  <description>Handle without documentation search</description>
+  </step>
+  </if_block>
+  
+  <if_block condition='{user_query} requires technical information'>
+  <step>
+  <action>Search documentation</action>
+  <description>Use semantic_search tool to find relevant chunks</description>
+  </step>
+  
+  <if_block condition='<search_result> quality < threshold'>
+  <step>
+  <action>Refine search</action>
+  <description>Rephrase query and search again (up to 5 attempts)</description>
+  </step>
+  </if_block>
+  </if_block>
+  
+  Rules:
+  - Make multiple searches if initial <search_result> isn't sufficient
+  - Track quality of results and decide if more searches needed
+  - Store all relevant chunks from multiple searches
   ```
 
 ## Routing Classifier Requirements
@@ -230,37 +276,137 @@ Check documentation on https://openrouter.ai/docs/api-reference/overview.
 ## Prompt Templates (use as-is, interpolate variables)
 
 ### 1) Answer Generation System Prompt
+//parahelp prompt design with structured decision flow
 ```
 You are Atlan Support AI. 
 Goal: answer user questions about Atlan's product using only the provided documentation context and conversation history. If unsure or context is weak, say so briefly and prefer asking clarifying questions or escalating.
+
+Process:
+<step>
+<action>Check routing decision</action>
+<description>Examine <routing_decision> to determine response type needed</description>
+</step>
+
+<if_block condition='<routing_decision>.classification == "escalate_human"'>
+<step>
+<action>Create handoff message</action>
+<description>Produce brief empathetic handoff message with context summary from <retrieved_chunks>, mention escalation_trigger from <routing_decision></description>
+</step>
+</if_block>
+
+<if_block condition='<routing_decision>.classification == "needs_clarification"'>
+<step>
+<action>Generate clarifying questions</action>
+<description>Create up to 2 targeted questions based on what's missing in <retrieved_chunks> to answer {current_user_message}</description>
+</step>
+</if_block>
+
+<if_block condition='<routing_decision>.classification == "continue_ai"'>
+<step>
+<action>Analyze retrieved documentation</action>
+<description>Evaluate if <retrieved_chunks> contains sufficient information to answer {current_user_message}</description>
+</step>
+
+<if_block condition='<retrieved_chunks> contains answer'>
+<step>
+<action>Generate answer</action>
+<description>Create response using information from <retrieved_chunks> and {conversation_history}</description>
+</step>
+</if_block>
+
+<if_block condition='<retrieved_chunks> insufficient despite routing approval'>
+<step>
+<action>Provide best effort response</action>
+<description>Give partial answer with caveat about limited information in <retrieved_chunks></description>
+</step>
+</if_block>
+</if_block>
+
 Rules:
 - Be accurate, concise, and actionable. Use numbered steps for procedures.
 - Cite relevant doc chunk titles (topics) by name; do not invent links.
 - Never guess account-specific or billing details; recommend escalation instead.
-- If the router indicates escalate_human, produce a brief empathetic handoff message + summary.
 - No chain-of-thought. Provide only the final answer with a 1-sentence "Reasoning summary".
+
 Output format:
 - Answer
 - Reasoning summary: <one sentence>
-- Sources: <comma-separated topics from context>
+- Sources: <comma-separated topics from <retrieved_chunks>>
 ```
 User message: {current_user_message}
 Conversation (truncated): {conversation_history_snippet}
 Retrieved context (top-k with topics):
 {retrieved_chunks_block}
+Routing decision:
+{routing_decision_json}
 ```
 
 ### 2) Routing Classifier System Prompt
 ```
 You are a routing controller for Atlan support. Decide the next step for this conversation.
-Possible classifications:
-- continue_ai: Provide answer confidently.
-- needs_clarification: Ask up to 2 targeted questions to proceed.
-- escalate_human: Knowledge gap, user frustration, account/billing, or bug reports.
-Signals:
-- Use retrieval scores to detect knowledge gaps.
-- If max_similarity < {KNOWLEDGE_GAP_THRESHOLD}, you MUST escalate with reason "No relevant documentation found".
-- Detect frustration (e.g., "this is useless", profanity), account/billing, bug/error reports.
+
+Decision Process:
+<step>
+<action>Check retrieval quality</action>
+<description>Evaluate if max_similarity score from <retrieved_chunks> meets threshold</description>
+</step>
+
+<if_block condition='max_similarity < {KNOWLEDGE_GAP_THRESHOLD}'>
+<step>
+<action>Force escalation</action>
+<description>Set classification="escalate_human" with escalation_trigger="knowledge_gap" and reason="No relevant documentation found"</description>
+</step>
+</if_block>
+
+<if_block condition='max_similarity >= {KNOWLEDGE_GAP_THRESHOLD}'>
+<step>
+<action>Check for escalation triggers</action>
+<description>Analyze {current_user_message} and {conversation_history} for escalation signals</description>
+</step>
+
+<if_block condition='frustration detected (e.g., "this is useless", profanity, repeated issues)'>
+<step>
+<action>Escalate for frustration</action>
+<description>Set classification="escalate_human" with escalation_trigger="user_frustration"</description>
+</step>
+</if_block>
+
+<if_block condition='account/billing question detected (SSO, SCIM, seats, invoices, plans)'>
+<step>
+<action>Escalate for account</action>
+<description>Set classification="escalate_human" with escalation_trigger="account_specific"</description>
+</step>
+</if_block>
+
+<if_block condition='bug/error report detected (crash, error, failure, broken functionality)'>
+<step>
+<action>Escalate for bug report</action>
+<description>Set classification="escalate_human" with escalation_trigger="bug_report"</description>
+</step>
+</if_block>
+
+<if_block condition='no escalation triggers found'>
+<step>
+<action>Determine if clarification needed</action>
+<description>Check if <retrieved_chunks> needs user input to proceed effectively</description>
+</step>
+
+<if_block condition='<retrieved_chunks> partially relevant but needs specifics'>
+<step>
+<action>Request clarification</action>
+<description>Set classification="needs_clarification" with medium confidence</description>
+</step>
+</if_block>
+
+<if_block condition='<retrieved_chunks> contains clear answer'>
+<step>
+<action>Continue with AI</action>
+<description>Set classification="continue_ai" with high confidence based on <retrieved_chunks> relevance</description>
+</step>
+</if_block>
+</if_block>
+</if_block>
+
 Output STRICT JSON:
 {
   "classification": "continue_ai|needs_clarification|escalate_human",
@@ -272,7 +418,7 @@ No extra text.
 ```
 Inputs:
 - max_similarity: {max_similarity}
-- retrieved_chunks (topic, score): {retrieved_scores_table}
+- retrieved_chunks (topic, score): {retrieved_chunks_table}
 - latest_user_message: {current_user_message}
 - conversation_history (truncated): {conversation_history_snippet}
 ```
@@ -343,3 +489,5 @@ Inputs:
 - How evaluation appears in UI
 
 Build per this spec. If any requirement is ambiguous, ask for clarification before deviating.
+
+//few shot examples of step by step reasoning process through each edge case

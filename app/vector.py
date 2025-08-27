@@ -56,10 +56,11 @@ import json
 import time
 import hashlib
 import asyncio
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple, Optional, Any, Set
 import numpy as np
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
 from loguru import logger
 
 from pinecone import Pinecone, Index, ServerlessSpec
@@ -178,6 +179,72 @@ class QueryCache:
             "misses": self._misses,
             "hit_rate": round(hit_rate, 2)
         }
+
+
+# Keyword expansion mappings for smarter filtering
+KEYWORD_EXPANSIONS = {
+    # Authentication/Security
+    "sso": ["oauth", "authentication", "saml", "single sign-on", "auth"],
+    "oauth": ["sso", "authentication", "authorization", "token"],
+    "auth": ["authentication", "authorization", "sso", "oauth", "login"],
+    
+    # Troubleshooting
+    "error": ["troubleshooting", "issue", "problem", "failed", "failure"],
+    "troubleshoot": ["error", "debug", "fix", "resolve", "issue"],
+    "issue": ["problem", "error", "troubleshooting", "bug"],
+    "failed": ["error", "failure", "issue", "problem"],
+    
+    # Setup/Configuration
+    "setup": ["configure", "connect", "integrate", "install", "set up"],
+    "configure": ["setup", "config", "settings", "customize"],
+    "connect": ["integrate", "link", "setup", "connection"],
+    "integrate": ["connect", "setup", "integration", "link"],
+    
+    # Data operations
+    "crawl": ["scan", "extract", "fetch", "pull", "ingest"],
+    "mine": ["extract", "analyze", "discover", "process"],
+    "lineage": ["data flow", "dependency", "relationship", "trace"],
+    
+    # Connectors/Products (with common variations)
+    "databricks": ["spark", "delta lake", "databrick"],
+    "snowflake": ["snowflake", "snow"],
+    "bigquery": ["bq", "big query", "google bigquery", "gcp"],
+    "powerbi": ["power bi", "microsoft power bi", "pbi"],
+    "tableau": ["tableau", "tableau server", "tableau cloud"],
+    "quicksight": ["amazon quicksight", "aws quicksight"],
+    "postgres": ["postgresql", "pg", "postgres"],
+    "mysql": ["my sql", "mysql"],
+    
+    # Features
+    "metric": ["metrics", "measure", "kpi", "indicator"],
+    "tag": ["tags", "label", "labels", "tagging"],
+    "readme": ["documentation", "docs", "description"],
+    "workflow": ["automation", "pipeline", "process", "flow"],
+}
+
+# Common connector/product names for entity extraction
+CONNECTOR_ENTITIES = {
+    "databricks", "snowflake", "bigquery", "big query", "powerbi", "power bi",
+    "tableau", "quicksight", "postgresql", "postgres", "mysql", "s3",
+    "redshift", "athena", "glue", "dbt", "airflow", "kafka", "salesforce",
+    "oracle", "sql server", "mongodb", "cassandra", "elasticsearch"
+}
+
+
+class QueryAnalysis:
+    """Result of analyzing a user query for smart filtering."""
+    
+    def __init__(self):
+        self.raw_query: str = ""
+        self.normalized_query: str = ""
+        self.detected_connectors: Set[str] = set()
+        self.detected_features: Set[str] = set()
+        self.detected_intents: Set[str] = set()
+        self.extracted_keywords: Set[str] = set()
+        self.expanded_keywords: Set[str] = set()
+        self.has_error_intent: bool = False
+        self.has_setup_intent: bool = False
+        self.has_how_to_intent: bool = False
 
 
 class PineconeVectorStore:
@@ -657,67 +724,333 @@ class PineconeVectorStore:
         
         return embeddings
     
-    def detect_query_intent(self, query: str) -> QueryIntent:
+    def analyze_query(self, query: str) -> QueryAnalysis:
         """
-        Detect the intent of a user query for smart filtering.
+        Perform comprehensive analysis of a user query for smart filtering.
+        
+        This method extracts entities, detects intents, and expands keywords
+        to enable more intelligent metadata filtering.
         
         Args:
             query: User query text
             
         Returns:
-            QueryIntent: Detected intent
+            QueryAnalysis: Comprehensive analysis results
         """
-        query_lower = query.lower()
+        analysis = QueryAnalysis()
+        analysis.raw_query = query
+        analysis.normalized_query = query.lower()
         
-        # Connector setup patterns
-        connector_patterns = [
-            r'\b(setup|configure|connect|integration)\b.*\b(databricks|snowflake|bigquery|postgres|mysql|s3|tableau)\b',
-            r'\b(databricks|snowflake|bigquery|postgres|mysql|s3|tableau)\b.*\b(setup|configure|connect|integration)\b',
-            r'\bhow to set up\b',
-            r'\bconnect.*to\b',
-            r'\bintegration.*with\b'
-        ]
+        # Extract connector/product entities
+        for connector in CONNECTOR_ENTITIES:
+            if connector in analysis.normalized_query:
+                analysis.detected_connectors.add(connector)
+                # Also add the base form (e.g., "big query" -> "bigquery")
+                normalized_connector = connector.replace(" ", "")
+                if normalized_connector in KEYWORD_EXPANSIONS:
+                    analysis.detected_connectors.add(normalized_connector)
         
-        # Troubleshooting patterns  
-        troubleshooting_patterns = [
-            r'\b(error|failed|failing|issue|problem|not working|broken)\b',
+        # Detect specific intents
+        error_patterns = [
+            r'\b(error|failed|failing|issue|problem|not working|broken|bug)\b',
             r'\b(fix|resolve|troubleshoot|debug)\b',
-            r'\b(why.*not|can\'t|cannot|unable)\b',
-            r'\b(help.*with.*error)\b',
-            r'\b(getting.*error)\b'
+            r'\b(why.*not|can\'t|cannot|unable)\b'
         ]
         
-        # How-to guide patterns
+        setup_patterns = [
+            r'\b(setup|set up|configure|connect|integrate|install)\b',
+            r'\bhow to (setup|set up|configure|connect)\b',
+            r'\b(connection|integration|configuration)\b'
+        ]
+        
         how_to_patterns = [
-            r'\bhow (to|do|can)\b',
+            r'\bhow (to|do|can|should)\b',
             r'\bwhat.*steps\b',
-            r'\bguide.*for\b',
-            r'\binstructions.*for\b',
+            r'\b(guide|tutorial|instructions|walkthrough)\b',
             r'\bstep.*by.*step\b'
         ]
         
-        # Check patterns in order of specificity - troubleshooting first since it's most specific
-        for pattern in troubleshooting_patterns:
-            if re.search(pattern, query_lower):
-                logger.debug(f"Detected troubleshooting intent: {pattern}")
-                return QueryIntent.TROUBLESHOOTING
-                
-        for pattern in connector_patterns:
-            if re.search(pattern, query_lower):
-                logger.debug(f"Detected connector setup intent: {pattern}")
-                return QueryIntent.CONNECTOR_SETUP
-                
-        for pattern in how_to_patterns:
-            if re.search(pattern, query_lower):
-                logger.debug(f"Detected how-to intent: {pattern}")
-                return QueryIntent.HOW_TO_GUIDE
+        # Check for error/troubleshooting intent
+        for pattern in error_patterns:
+            if re.search(pattern, analysis.normalized_query):
+                analysis.has_error_intent = True
+                analysis.detected_intents.add("troubleshooting")
+                break
         
-        logger.debug("No specific intent detected, using general")
-        return QueryIntent.GENERAL
+        # Check for setup/configuration intent
+        for pattern in setup_patterns:
+            if re.search(pattern, analysis.normalized_query):
+                analysis.has_setup_intent = True
+                analysis.detected_intents.add("setup")
+                break
+        
+        # Check for how-to intent
+        for pattern in how_to_patterns:
+            if re.search(pattern, analysis.normalized_query):
+                analysis.has_how_to_intent = True
+                analysis.detected_intents.add("how-to")
+                break
+        
+        # Extract keywords from query
+        # Split by common delimiters and filter out stop words
+        stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+                     "of", "with", "from", "up", "about", "into", "through", "during",
+                     "how", "do", "i", "is", "are", "was", "were", "been", "be", "have",
+                     "has", "had", "does", "did", "will", "would", "should", "could", "may",
+                     "might", "must", "can", "need", "what", "when", "where", "which", "who"}
+        
+        words = re.findall(r'\b[a-z]+\b', analysis.normalized_query)
+        for word in words:
+            if len(word) > 2 and word not in stop_words:
+                analysis.extracted_keywords.add(word)
+        
+        # Expand keywords using the expansion map
+        analysis.expanded_keywords = analysis.extracted_keywords.copy()
+        for keyword in analysis.extracted_keywords:
+            if keyword in KEYWORD_EXPANSIONS:
+                analysis.expanded_keywords.update(KEYWORD_EXPANSIONS[keyword])
+        
+        # Add detected connectors to keywords
+        analysis.expanded_keywords.update(analysis.detected_connectors)
+        
+        # Detect specific feature mentions
+        feature_keywords = {
+            "sso", "oauth", "authentication", "authorization",
+            "lineage", "tags", "tagging", "metrics", "metric",
+            "readme", "documentation", "workflow", "automation",
+            "crawl", "crawling", "mine", "mining", "preflight"
+        }
+        
+        for feature in feature_keywords:
+            if feature in analysis.normalized_query:
+                analysis.detected_features.add(feature)
+        
+        logger.debug(
+            "Query analysis complete",
+            connectors=list(analysis.detected_connectors),
+            features=list(analysis.detected_features),
+            intents=list(analysis.detected_intents),
+            keywords=len(analysis.extracted_keywords),
+            expanded_keywords=len(analysis.expanded_keywords)
+        )
+        
+        return analysis
+    
+    def detect_query_intent(self, query: str) -> QueryIntent:
+        """
+        Detect the primary intent of a user query (backward compatibility).
+        
+        This method is kept for backward compatibility but internally uses
+        the new analyze_query method.
+        
+        Args:
+            query: User query text
+            
+        Returns:
+            QueryIntent: Primary detected intent
+        """
+        analysis = self.analyze_query(query)
+        
+        # Map analysis results to QueryIntent enum
+        if analysis.has_error_intent:
+            return QueryIntent.TROUBLESHOOTING
+        elif analysis.has_setup_intent and analysis.detected_connectors:
+            return QueryIntent.CONNECTOR_SETUP
+        elif analysis.has_how_to_intent:
+            return QueryIntent.HOW_TO_GUIDE
+        else:
+            return QueryIntent.GENERAL
+    
+    def _build_smart_filters(self, analysis: QueryAnalysis) -> Dict[str, Any]:
+        """
+        Build intelligent Pinecone filters based on query analysis.
+        
+        This method creates dynamic filters based on detected entities,
+        intents, and keywords rather than simple category mapping.
+        
+        Args:
+            analysis: Query analysis results
+            
+        Returns:
+            Dict[str, Any]: Pinecone metadata filters
+        """
+        filters = {}
+        
+        # For now, avoid keyword filtering as it can be too restrictive
+        # The keyword expansion is valuable for re-ranking but not for filtering
+        # This ensures we don't miss relevant content due to keyword mismatches
+        
+        # Future enhancement: Could add very selective filters for high-confidence cases
+        # For example, only filter if we have high-confidence connector detection
+        # and the user explicitly mentions a specific connector
+        
+        # Don't apply strict category filters either - let scoring handle it
+        # This allows cross-category results which are often relevant
+        
+        logger.debug(
+            "Built smart filters (no restrictions for broader search)",
+            filter_keys=list(filters.keys()),
+            analysis_summary=f"connectors={len(analysis.detected_connectors)}, features={len(analysis.detected_features)}"
+        )
+        
+        return filters
+    
+    def _score_metadata_match(self, chunk_metadata: Dict[str, Any], 
+                             analysis: QueryAnalysis) -> float:
+        """
+        Score how well chunk metadata matches the query analysis.
+        
+        Args:
+            chunk_metadata: Metadata from a chunk
+            analysis: Query analysis results
+            
+        Returns:
+            float: Metadata relevance score (0.0 to 1.0)
+        """
+        score = 0.0
+        max_score = 0.0
+        
+        # Topic matching (40% weight)
+        topic = chunk_metadata.get("topic", "").lower()
+        topic_weight = 0.4
+        max_score += topic_weight
+        
+        # Check for connector matches in topic
+        for connector in analysis.detected_connectors:
+            if connector in topic:
+                score += topic_weight * 0.8
+                break
+        
+        # Check for feature matches in topic
+        for feature in analysis.detected_features:
+            if feature in topic:
+                score += topic_weight * 0.6
+                break
+        
+        # Fuzzy match against query terms
+        if not analysis.detected_connectors and not analysis.detected_features:
+            # Use sequence matching for general queries
+            similarity = SequenceMatcher(None, analysis.normalized_query, topic).ratio()
+            score += topic_weight * similarity * 0.5
+        
+        # Keyword matching (30% weight)
+        keyword_weight = 0.3
+        max_score += keyword_weight
+        chunk_keywords = set(k.lower() for k in chunk_metadata.get("keywords", []))
+        
+        if chunk_keywords and analysis.expanded_keywords:
+            overlap = chunk_keywords.intersection(analysis.expanded_keywords)
+            if overlap:
+                overlap_ratio = len(overlap) / max(len(analysis.expanded_keywords), 1)
+                score += keyword_weight * min(overlap_ratio * 1.5, 1.0)  # Boost for multiple matches
+        
+        # Category matching (20% weight)
+        category_weight = 0.2
+        max_score += category_weight
+        category = chunk_metadata.get("category", "").lower()
+        
+        # Smart category scoring based on intent
+        if analysis.has_error_intent:
+            if "reference" in category or "connectors" in category:
+                score += category_weight * 0.8
+            elif "how-to" in category:
+                score += category_weight * 0.5
+        elif analysis.has_setup_intent:
+            if "connectors" in category:
+                score += category_weight * 1.0
+            elif "how-to" in category:
+                score += category_weight * 0.7
+        elif analysis.has_how_to_intent:
+            if "how-to" in category:
+                score += category_weight * 1.0
+            elif "connectors" in category:
+                score += category_weight * 0.6
+        else:
+            # For general queries, all categories get equal weight
+            score += category_weight * 0.5
+        
+        # Source URL specificity (10% weight)
+        url_weight = 0.1
+        max_score += url_weight
+        source_url = chunk_metadata.get("source_url", "")
+        
+        # Deeper URLs are more specific
+        if source_url:
+            depth = source_url.count("/") - 2  # Subtract protocol slashes
+            if depth > 3:
+                score += url_weight * 0.8
+            elif depth > 2:
+                score += url_weight * 0.5
+            else:
+                score += url_weight * 0.2
+            
+            # Bonus for connector-specific URLs
+            for connector in analysis.detected_connectors:
+                if connector in source_url.lower():
+                    score += url_weight * 0.2
+                    break
+        
+        # Normalize score to 0-1 range
+        final_score = score / max_score if max_score > 0 else 0.0
+        
+        return min(final_score, 1.0)
+    
+    def _rerank_results(self, chunks: List[RetrievalChunk], 
+                       analysis: QueryAnalysis, 
+                       vector_weight: float = 0.7) -> List[RetrievalChunk]:
+        """
+        Re-rank search results based on combined vector similarity and metadata relevance.
+        
+        Args:
+            chunks: Initial search results
+            analysis: Query analysis results
+            vector_weight: Weight for vector similarity (0-1), remainder for metadata
+            
+        Returns:
+            List[RetrievalChunk]: Re-ranked results
+        """
+        if not chunks:
+            return chunks
+        
+        metadata_weight = 1.0 - vector_weight
+        
+        # Calculate combined scores
+        scored_chunks = []
+        for chunk in chunks:
+            metadata_score = self._score_metadata_match(chunk.metadata, analysis)
+            combined_score = (
+                vector_weight * chunk.similarity_score + 
+                metadata_weight * metadata_score
+            )
+            
+            # Create a new chunk with updated score
+            reranked_chunk = RetrievalChunk(
+                id=chunk.id,
+                text=chunk.text,
+                metadata=chunk.metadata,
+                similarity_score=combined_score
+            )
+            scored_chunks.append(reranked_chunk)
+            
+            logger.debug(
+                f"Chunk re-ranking",
+                chunk_id=chunk.id[:20],
+                original_score=round(chunk.similarity_score, 3),
+                metadata_score=round(metadata_score, 3),
+                combined_score=round(combined_score, 3)
+            )
+        
+        # Sort by combined score
+        scored_chunks.sort(key=lambda x: x.similarity_score, reverse=True)
+        
+        return scored_chunks
     
     def _create_filters_from_intent(self, intent: QueryIntent) -> Dict[str, Any]:
         """
-        Create Pinecone filters based on detected query intent.
+        Create Pinecone filters based on detected query intent (backward compatibility).
+        
+        This method is kept for backward compatibility but internally uses
+        the new smart filtering approach.
         
         Args:
             intent: Detected query intent
@@ -725,17 +1058,17 @@ class PineconeVectorStore:
         Returns:
             Dict[str, Any]: Pinecone metadata filters
         """
-        filters = {}
+        # Create a simple analysis from intent for compatibility
+        analysis = QueryAnalysis()
         
         if intent == QueryIntent.CONNECTOR_SETUP:
-            filters["category"] = {"$eq": DocumentCategory.CONNECTORS.value}
+            analysis.has_setup_intent = True
         elif intent == QueryIntent.TROUBLESHOOTING:
-            filters["category"] = {"$eq": DocumentCategory.REFERENCE.value}
+            analysis.has_error_intent = True
         elif intent == QueryIntent.HOW_TO_GUIDE:
-            filters["category"] = {"$eq": DocumentCategory.HOW_TO_GUIDES.value}
-        # For GENERAL intent, no category filter is applied
+            analysis.has_how_to_intent = True
         
-        return filters
+        return self._build_smart_filters(analysis)
     
     def _normalize_similarity_scores(self, matches: List[Dict]) -> List[Dict]:
         """
@@ -973,22 +1306,36 @@ class PineconeVectorStore:
         
         try:
             with Timer("semantic_search"):
-                # Detect query intent for smart filtering
-                detected_intent = self.detect_query_intent(query)
-                logger.info(f"Detected query intent: {detected_intent}")
+                # Perform comprehensive query analysis
+                analysis = self.analyze_query(query)
+                detected_intent = QueryIntent.GENERAL
+                if analysis.has_error_intent:
+                    detected_intent = QueryIntent.TROUBLESHOOTING
+                elif analysis.has_setup_intent and analysis.detected_connectors:
+                    detected_intent = QueryIntent.CONNECTOR_SETUP
+                elif analysis.has_how_to_intent:
+                    detected_intent = QueryIntent.HOW_TO_GUIDE
                 
-                # Create filters based on intent
-                pinecone_filters = self._create_filters_from_intent(detected_intent)
+                logger.info(
+                    "Query analysis complete",
+                    detected_intent=detected_intent,
+                    connectors=list(analysis.detected_connectors)[:3],
+                    features=list(analysis.detected_features)[:3],
+                    keyword_count=len(analysis.expanded_keywords)
+                )
                 
-                # Apply additional filters if provided
+                # Build smart filters based on analysis
+                pinecone_filters = self._build_smart_filters(analysis)
+                
+                # Apply additional manual filters if provided
                 if filters:
                     if filters.category:
                         pinecone_filters["category"] = {"$eq": filters.category.value}
                     if filters.keywords:
-                        # Add keyword filtering (simple approach)
-                        keyword_filter = {"$in": filters.keywords}
-                        if "keywords" not in pinecone_filters:
-                            pinecone_filters["keywords"] = keyword_filter
+                        # Merge with smart keywords
+                        existing_keywords = pinecone_filters.get("keywords", {}).get("$in", [])
+                        merged_keywords = list(set(existing_keywords + filters.keywords))[:15]
+                        pinecone_filters["keywords"] = {"$in": merged_keywords}
                 
                 # Check cache first if enabled
                 cached_result = None
@@ -1036,10 +1383,13 @@ class PineconeVectorStore:
                         )
                         chunks.append(chunk)
                 
-                # Sort by similarity score descending
+                # Sort by similarity score descending (initial sort)
                 chunks.sort(key=lambda x: x.similarity_score, reverse=True)
                 
-                # Calculate max similarity
+                # Re-rank results based on combined vector similarity and metadata relevance
+                chunks = self._rerank_results(chunks, analysis, vector_weight=0.7)
+                
+                # Calculate max similarity after re-ranking
                 max_similarity = chunks[0].similarity_score if chunks else 0.0
                 
                 # Format context for LLM
@@ -1157,8 +1507,17 @@ class PineconeVectorStore:
         Returns:
             SearchResult: Search results
         """
-        detected_intent = self.detect_query_intent(query)
-        pinecone_filters = self._create_filters_from_intent(detected_intent)
+        # Perform query analysis for smart filtering
+        analysis = self.analyze_query(query)
+        detected_intent = QueryIntent.GENERAL
+        if analysis.has_error_intent:
+            detected_intent = QueryIntent.TROUBLESHOOTING
+        elif analysis.has_setup_intent and analysis.detected_connectors:
+            detected_intent = QueryIntent.CONNECTOR_SETUP
+        elif analysis.has_how_to_intent:
+            detected_intent = QueryIntent.HOW_TO_GUIDE
+        
+        pinecone_filters = self._build_smart_filters(analysis)
         
         # Check cache first if enabled
         if use_cache:
@@ -1197,6 +1556,10 @@ class PineconeVectorStore:
                 chunks.append(chunk)
         
         chunks.sort(key=lambda x: x.similarity_score, reverse=True)
+        
+        # Re-rank results based on combined vector similarity and metadata relevance
+        chunks = self._rerank_results(chunks, analysis, vector_weight=0.7)
+        
         max_similarity = chunks[0].similarity_score if chunks else 0.0
         formatted_context = self._format_context_for_llm(chunks)
         
