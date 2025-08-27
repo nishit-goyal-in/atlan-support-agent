@@ -395,6 +395,12 @@
             text-transform: uppercase;
         }
 
+        /* New route types */
+        .routing-badge.search_docs { background: #00b894; }  /* Green - technical documentation */
+        .routing-badge.general_chat { background: #6c5ce7; }  /* Purple - general conversation */
+        .routing-badge.escalate_human_agent { background: #e17055; }  /* Orange/Red - human escalation */
+        
+        /* Legacy route support (for backward compatibility) */
         .routing-badge.knowledge_based { background: #00b894; }
         .routing-badge.conversational { background: #6c5ce7; }
         .routing-badge.hybrid { background: #fd79a8; }
@@ -697,7 +703,17 @@
                 
                 // Add trigger information based on route type
                 let trigger = '';
-                if (routeType === 'knowledge_based') {
+                if (routeType === 'search_docs') {
+                    trigger = metadata.sources_count > 0 ? 
+                        `Found ${metadata.sources_count} relevant documentation source${metadata.sources_count !== 1 ? 's' : ''}` : 
+                        'Searching documentation for technical query';
+                } else if (routeType === 'general_chat') {
+                    trigger = 'General conversation - no documentation search needed';
+                } else if (routeType === 'escalate_human_agent') {
+                    trigger = 'Routing to human agent for specialized assistance';
+                }
+                // Legacy route support (for backward compatibility)
+                else if (routeType === 'knowledge_based') {
                     trigger = metadata.sources_count > 0 ? 
                         `Found ${metadata.sources_count} relevant documentation source${metadata.sources_count !== 1 ? 's' : ''}` : 
                         'Using knowledge base for documentation query';

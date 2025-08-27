@@ -104,11 +104,16 @@ class StoreMetrics:
     cache_misses: int = 0
     avg_response_time_ms: float = 0.0
     
-    # Routing distribution
+    # Routing distribution (legacy route types for backward compatibility)
     knowledge_based_requests: int = 0
     conversational_requests: int = 0
     hybrid_requests: int = 0
     clarification_requests: int = 0
+    
+    # New route types
+    search_docs_requests: int = 0
+    general_chat_requests: int = 0
+    escalate_human_agent_requests: int = 0
     
     # Time-based metrics
     requests_last_hour: int = 0
@@ -375,15 +380,25 @@ class ConversationStore:
             if self._metrics.response_times:
                 self._metrics.avg_response_time_ms = sum(self._metrics.response_times) / len(self._metrics.response_times)
             
-            # Update routing distribution
-            if route_type == RouteType.KNOWLEDGE_BASED:
+            # Update routing distribution (handle both old and new route types)
+            route_value = route_type.value if hasattr(route_type, 'value') else str(route_type)
+            
+            # Legacy route types (for backward compatibility)
+            if hasattr(RouteType, 'KNOWLEDGE_BASED') and route_type == RouteType.KNOWLEDGE_BASED:
                 self._metrics.knowledge_based_requests += 1
-            elif route_type == RouteType.CONVERSATIONAL:
+            elif hasattr(RouteType, 'CONVERSATIONAL') and route_type == RouteType.CONVERSATIONAL:
                 self._metrics.conversational_requests += 1
-            elif route_type == RouteType.HYBRID:
+            elif hasattr(RouteType, 'HYBRID') and route_type == RouteType.HYBRID:
                 self._metrics.hybrid_requests += 1
-            elif route_type == RouteType.CLARIFICATION:
+            elif hasattr(RouteType, 'CLARIFICATION') and route_type == RouteType.CLARIFICATION:
                 self._metrics.clarification_requests += 1
+            # New route types
+            elif route_type == RouteType.SEARCH_DOCS:
+                self._metrics.search_docs_requests += 1
+            elif route_type == RouteType.GENERAL_CHAT:
+                self._metrics.general_chat_requests += 1
+            elif route_type == RouteType.ESCALATE_HUMAN_AGENT:
+                self._metrics.escalate_human_agent_requests += 1
             
             # Update cache metrics
             if performance.cache_hit:

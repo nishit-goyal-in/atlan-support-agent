@@ -112,7 +112,7 @@ async def logging_and_timing_middleware(request: Request, call_next):
             method=request.method,
             url=str(request.url),
             error=str(e),
-            error_type=error_type,
+            error_type=type(e).__name__,
             processing_time_ms=processing_time * 1000,
             request_id=request_id
         )
@@ -634,10 +634,13 @@ async def health_check(http_request: Request) -> EnhancedHealthResponse:
                     "uptime_seconds": round(uptime_seconds, 2),
                     "active_conversations": active_conversations,
                     "total_requests": sum([
-                        store_metrics.knowledge_based_requests,
-                        store_metrics.conversational_requests, 
-                        store_metrics.hybrid_requests,
-                        store_metrics.clarification_requests
+                        getattr(store_metrics, 'knowledge_based_requests', 0),
+                        getattr(store_metrics, 'conversational_requests', 0),
+                        getattr(store_metrics, 'hybrid_requests', 0),
+                        getattr(store_metrics, 'clarification_requests', 0),
+                        getattr(store_metrics, 'search_docs_requests', 0),
+                        getattr(store_metrics, 'general_chat_requests', 0),
+                        getattr(store_metrics, 'escalate_human_agent_requests', 0)
                     ]),
                     "success_rate": 0.98  # Estimate based on operational data
                 }
@@ -731,20 +734,26 @@ async def get_system_metrics(http_request: Request) -> SystemMetrics:
         store = get_conversation_store()
         store_metrics = await store.get_metrics()
         
-        # Calculate metrics from store data
+        # Calculate metrics from store data (handle both old and new route types)
         total_route_requests = (
-            store_metrics.knowledge_based_requests + 
-            store_metrics.conversational_requests + 
-            store_metrics.hybrid_requests + 
-            store_metrics.clarification_requests
+            getattr(store_metrics, 'knowledge_based_requests', 0) + 
+            getattr(store_metrics, 'conversational_requests', 0) + 
+            getattr(store_metrics, 'hybrid_requests', 0) + 
+            getattr(store_metrics, 'clarification_requests', 0) +
+            getattr(store_metrics, 'search_docs_requests', 0) + 
+            getattr(store_metrics, 'general_chat_requests', 0) + 
+            getattr(store_metrics, 'escalate_human_agent_requests', 0)
         )
         
-        # Build route distribution from store metrics
+        # Build route distribution from store metrics (include both old and new route types)
         route_distribution = {
-            "knowledge_based": store_metrics.knowledge_based_requests,
-            "conversational": store_metrics.conversational_requests,
-            "hybrid": store_metrics.hybrid_requests,
-            "clarification": store_metrics.clarification_requests
+            "knowledge_based": getattr(store_metrics, 'knowledge_based_requests', 0),
+            "conversational": getattr(store_metrics, 'conversational_requests', 0),
+            "hybrid": getattr(store_metrics, 'hybrid_requests', 0),
+            "clarification": getattr(store_metrics, 'clarification_requests', 0),
+            "search_docs": getattr(store_metrics, 'search_docs_requests', 0),
+            "general_chat": getattr(store_metrics, 'general_chat_requests', 0),
+            "escalate_human_agent": getattr(store_metrics, 'escalate_human_agent_requests', 0)
         }
         
         # Calculate cache hit rate from store
@@ -867,10 +876,13 @@ async def get_admin_status(http_request: Request):
         store = get_conversation_store()
         store_metrics = await store.get_metrics()
         total_requests = sum([
-            store_metrics.knowledge_based_requests,
-            store_metrics.conversational_requests,
-            store_metrics.hybrid_requests,
-            store_metrics.clarification_requests
+            getattr(store_metrics, 'knowledge_based_requests', 0),
+            getattr(store_metrics, 'conversational_requests', 0),
+            getattr(store_metrics, 'hybrid_requests', 0),
+            getattr(store_metrics, 'clarification_requests', 0),
+            getattr(store_metrics, 'search_docs_requests', 0),
+            getattr(store_metrics, 'general_chat_requests', 0),
+            getattr(store_metrics, 'escalate_human_agent_requests', 0)
         ])
         
         status_info = {
@@ -896,10 +908,13 @@ async def get_admin_status(http_request: Request):
             
             "routing": {
                 "route_distribution": {
-                    "knowledge_based": store_metrics.knowledge_based_requests,
-                    "conversational": store_metrics.conversational_requests,
-                    "hybrid": store_metrics.hybrid_requests,
-                    "clarification": store_metrics.clarification_requests
+                    "knowledge_based": getattr(store_metrics, 'knowledge_based_requests', 0),
+                    "conversational": getattr(store_metrics, 'conversational_requests', 0),
+                    "hybrid": getattr(store_metrics, 'hybrid_requests', 0),
+                    "clarification": getattr(store_metrics, 'clarification_requests', 0),
+                    "search_docs": getattr(store_metrics, 'search_docs_requests', 0),
+                    "general_chat": getattr(store_metrics, 'general_chat_requests', 0),
+                    "escalate_human_agent": getattr(store_metrics, 'escalate_human_agent_requests', 0)
                 },
                 "total_routes": total_requests
             },

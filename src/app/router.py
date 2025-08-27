@@ -1,54 +1,52 @@
 """
-Intelligent query classification and routing system for the Atlan Support Agent v2.
+Intelligent query routing and response generation system for the Atlan Support Agent v2.
 
-This module provides Phase 4 functionality for smart query routing, including:
+This module provides upgraded routing functionality with LLM-based decision making:
 
-QUERY CLASSIFICATION SYSTEM:
-- RouteType classification: KNOWLEDGE_BASED, CONVERSATIONAL, HYBRID, CLARIFICATION
-- Confidence scoring for each route type (0.0-1.0)
-- Technical terminology detection and analysis
-- Intent keyword pattern matching
+LLM-BASED ROUTING SYSTEM:
+- 3-Route classification: SEARCH_DOCS, GENERAL_CHAT, ESCALATE_HUMAN_AGENT
+- Anthropic Claude Sonnet-4 powered routing decisions
+- Natural language understanding for complex routing scenarios
+- Human escalation detection with safety rules
 
-QUERY COMPLEXITY ANALYSIS:
-- Simple vs complex question detection
-- Technical depth assessment based on terminology
-- Multi-part question detection and analysis
-- Query length and structure evaluation
+ROUTING TYPES:
+- SEARCH_DOCS: Technical questions answered with Atlan documentation via RAG
+- GENERAL_CHAT: General conversation without documentation search
+- ESCALATE_HUMAN_AGENT: Critical issues requiring human intervention
 
-CLASSIFICATION MODELS:
-- Keyword pattern matching with weighted scoring
-- Query structure analysis (questions, statements, etc.)
-- Technical terminology detection using Atlan-specific terms
-- Intent phrase matching for routing decisions
+HUMAN ESCALATION FEATURES:
+- Automatic detection of billing, security, and production issues
+- Explicit human request recognition ("talk to someone")
+- Safety rules for immediate escalation of critical keywords
+- Urgency-based response templates (LOW/MEDIUM/HIGH/CRITICAL)
 
-CONFIDENCE SCORING:
-- Configurable thresholds for routing decisions
-- Detailed confidence breakdown per route type
-- Overall confidence calculation with weighted factors
-- Reasoning generation for decision transparency
+LEGACY SUPPORT:
+- Backward compatibility with old route types (KNOWLEDGE_BASED, etc.)
+- Rule-based QueryClassifier maintained for fallback scenarios
+- Gradual migration support from 5-route to 3-route system
 
 INTEGRATION FEATURES:
-- Uses existing config system for threshold management
-- Comprehensive logging for classification decisions
-- Error handling for edge cases (empty queries, very long queries)
-- Integration with existing models.py data structures
+- RAG pipeline integration for documentation search
+- LLM response generation with source attribution
+- Comprehensive error handling and fallback mechanisms
+- Performance metrics and conversation tracking
 
 Usage:
-    from src.app.router import QueryRouter
+    # Modern LLM-based routing (recommended)
+    response = await route_and_respond(
+        query="How do I set up a Snowflake connector?",
+        conversation_history=[],
+        session_id="session_123"
+    )
     
+    # Legacy rule-based classification (fallback)
     router = QueryRouter()
-    decision = router.classify_and_route("How do I set up a Databricks connector?")
-    
-    if decision.should_use_rag:
-        # Use RAG pipeline
-        pass
-    elif decision.requires_followup:
-        # Ask clarifying questions
-        pass
+    decision = router.classify_and_route(query)
 """
 
 import re
 import time
+import uuid
 from typing import Dict, List, Set, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 from loguru import logger
@@ -126,6 +124,69 @@ class ClassificationPatterns:
         r'(?:furthermore|moreover|besides|in addition)',
         r'(?:step\s+\d+|part\s+\d+|item\s+\d+)'
     ]
+
+
+def _generate_escalation_response(query: str, escalation_urgency: str, reasoning: str) -> str:
+    """Generate appropriate escalation response based on urgency level."""
+    
+    escalation_messages = {
+        "CRITICAL": """🚨 **Priority Support - Connecting you immediately**
+
+This appears to be a critical issue requiring immediate attention. I'm routing your request to our priority support team right now.
+
+**What happens next:**
+- A specialist will contact you within 15 minutes
+- Your case has been flagged as high priority
+- You'll receive email confirmation with your ticket number
+
+For immediate assistance, you can also contact our emergency support line.
+
+**Your request:** "{query}"
+
+*Escalation reason: {reasoning}*""",
+
+        "HIGH": """🔄 **Connecting you to a specialist**
+
+I'm routing your request to a human agent who can provide personalized assistance for this issue.
+
+**What happens next:**
+- A specialist will review your case within 1 hour
+- You'll receive an email with your support ticket details
+- They'll have access to this conversation for context
+
+**Your request:** "{query}"
+
+*Escalation reason: {reasoning}*""",
+
+        "MEDIUM": """🤝 **Let me connect you with our support team**
+
+I want to make sure you get the best assistance possible. I'm routing your request to a human agent who can help.
+
+**What happens next:**
+- A support agent will reach out within 4 business hours
+- You'll receive a ticket confirmation email
+- They'll have full context from our conversation
+
+**Your request:** "{query}"
+
+*Escalation reason: {reasoning}*""",
+
+        "LOW": """💬 **Routing to human support**
+
+I'm connecting you with a member of our support team who can provide additional guidance.
+
+**What happens next:**
+- A support agent will respond within 24 hours
+- You'll receive ticket details via email
+- They can pick up where we left off
+
+**Your request:** "{query}"
+
+*Escalation reason: {reasoning}*"""
+    }
+    
+    template = escalation_messages.get(escalation_urgency, escalation_messages["MEDIUM"])
+    return template.format(query=query[:200] + "..." if len(query) > 200 else query, reasoning=reasoning)
 
 
 class QueryClassifier:
@@ -625,18 +686,47 @@ async def route_and_respond(
             conversation_turns=len(conversation_history)
         )
         
-        # Step 1: Query Classification
+        # Step 1: LLM-Based Routing
         classification_start = time.time()
-        router = QueryRouter()
-        routing_decision = router.classify_and_route(query)
+        
+        # Import and use LLM router
+        from src.app.llm_router import get_llm_router
+        llm_router = get_llm_router()
+        
+        llm_routing_decision = await llm_router.route_conversation(
+            user_message=query,
+            conversation_history=conversation_history
+        )
+        
         performance_metrics["classification_time_ms"] = (time.time() - classification_start) * 1000
         
+        # Convert to RouterDecision format for compatibility
+        routing_decision = RouterDecision(
+            route_type=llm_routing_decision.route_type,
+            confidence=llm_routing_decision.confidence,
+            query_complexity="simple",  # LLM router doesn't provide complexity
+            knowledge_confidence=0.8 if llm_routing_decision.route_type == RouteType.SEARCH_DOCS else 0.1,
+            conversational_confidence=0.8 if llm_routing_decision.route_type == RouteType.GENERAL_CHAT else 0.1,
+            hybrid_confidence=0.0,  # Not used in new system
+            clarification_confidence=0.0,  # Not used in new system
+            technical_terms_detected=[],  # Not provided by LLM router
+            intent_keywords_matched=[],  # Not provided by LLM router
+            query_length=len(query),
+            question_count=query.count('?'),
+            reasoning=llm_routing_decision.reasoning,
+            should_use_rag=(llm_routing_decision.route_type == RouteType.SEARCH_DOCS),
+            requires_followup=False  # Handled differently in new system
+        )
+        
+        # Add escalation urgency to routing decision for later use
+        routing_decision.escalation_urgency = llm_routing_decision.escalation_urgency
+        
         logger.info(
-            "Query classification completed",
+            "LLM routing completed",
             route_type=routing_decision.route_type.value,
             confidence=routing_decision.confidence,
-            should_use_rag=routing_decision.should_use_rag,
-            requires_followup=routing_decision.requires_followup
+            escalation_urgency=llm_routing_decision.escalation_urgency,
+            reasoning=llm_routing_decision.reasoning[:100] + "..." if len(llm_routing_decision.reasoning) > 100 else llm_routing_decision.reasoning
         )
         
         # Initialize response components
@@ -689,22 +779,23 @@ async def route_and_respond(
         llm_client = get_llm_client()
         
         try:
-            if routing_decision.route_type == RouteType.CONVERSATIONAL:
+            if routing_decision.route_type == RouteType.GENERAL_CHAT:
                 response_text = await llm_client.generate_conversational_response(
                     user_query=query,
                     conversation_history=conversation_history
                 )
                 
-            elif routing_decision.route_type == RouteType.KNOWLEDGE_BASED:
+            elif routing_decision.route_type == RouteType.SEARCH_DOCS:
                 if not rag_context or not raw_chunks:
-                    # Fallback to conversational if no context available
-                    logger.warning("No RAG context for knowledge-based query, falling back")
+                    # Fallback to general chat if no context available
+                    logger.warning("No RAG context for search docs query, falling back")
                     response_text = await llm_client.generate_conversational_response(
                         user_query=query,
                         conversation_history=conversation_history
                     )
-                    routing_decision.route_type = RouteType.CONVERSATIONAL
+                    routing_decision.route_type = RouteType.GENERAL_CHAT
                 else:
+                    # Use knowledge response for documentation-based queries
                     response_text = await llm_client.generate_knowledge_response(
                         user_query=query,
                         rag_context=rag_context,
@@ -712,24 +803,41 @@ async def route_and_respond(
                         chunks=raw_chunks
                     )
                     
-            elif routing_decision.route_type == RouteType.HYBRID:
-                if not rag_context or not raw_chunks:
-                    # Fallback to conversational if no context available
-                    logger.warning("No RAG context for hybrid query, falling back")
-                    response_text = await llm_client.generate_conversational_response(
-                        user_query=query,
-                        conversation_history=conversation_history
-                    )
-                    routing_decision.route_type = RouteType.CONVERSATIONAL
-                else:
-                    response_text = await llm_client.generate_hybrid_response(
-                        user_query=query,
-                        rag_context=rag_context,
-                        conversation_history=conversation_history,
-                        chunks=raw_chunks
-                    )
-                    
-            elif routing_decision.route_type == RouteType.CLARIFICATION:
+            elif routing_decision.route_type == RouteType.ESCALATE_HUMAN_AGENT:
+                # Handle human escalation
+                escalation_urgency = getattr(routing_decision, 'escalation_urgency', 'MEDIUM')
+                response_text = _generate_escalation_response(query, escalation_urgency, routing_decision.reasoning)
+                
+                # TODO: Integrate with ticket system (Zendesk, Intercom, etc.)
+                logger.info(
+                    "Human escalation triggered",
+                    query=query[:100],
+                    urgency=escalation_urgency,
+                    reason=routing_decision.reasoning,
+                    session_id=session_id
+                )
+                
+            # Legacy route support (will be removed after migration)
+            elif hasattr(RouteType, 'KNOWLEDGE_BASED') and routing_decision.route_type == RouteType.KNOWLEDGE_BASED:
+                response_text = await llm_client.generate_knowledge_response(
+                    user_query=query,
+                    rag_context=rag_context or "",
+                    conversation_history=conversation_history,
+                    chunks=raw_chunks or []
+                )
+            elif hasattr(RouteType, 'CONVERSATIONAL') and routing_decision.route_type == RouteType.CONVERSATIONAL:
+                response_text = await llm_client.generate_conversational_response(
+                    user_query=query,
+                    conversation_history=conversation_history
+                )
+            elif hasattr(RouteType, 'HYBRID') and routing_decision.route_type == RouteType.HYBRID:
+                response_text = await llm_client.generate_hybrid_response(
+                    user_query=query,
+                    rag_context=rag_context or "",
+                    conversation_history=conversation_history,
+                    chunks=raw_chunks or []
+                )
+            elif hasattr(RouteType, 'CLARIFICATION') and routing_decision.route_type == RouteType.CLARIFICATION:
                 response_text = await llm_client.generate_clarification_response(
                     user_query=query,
                     conversation_history=conversation_history

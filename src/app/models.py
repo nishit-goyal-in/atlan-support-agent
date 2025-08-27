@@ -29,11 +29,10 @@ class QueryIntent(str, Enum):
 
 
 class RouteType(str, Enum):
-    """Query routing classification for Phase 4 Router."""
-    KNOWLEDGE_BASED = "knowledge_based"  # Questions about Atlan documentation, connectors, features
-    CONVERSATIONAL = "conversational"   # General chat, greetings, non-technical questions
-    HYBRID = "hybrid"                   # Questions that need both documentation and LLM reasoning
-    CLARIFICATION = "clarification"     # Ambiguous queries that need follow-up questions
+    """Query routing classification for LLM-based Router."""
+    SEARCH_DOCS = "search_docs"              # Find documentation and answer technical questions
+    GENERAL_CHAT = "general_chat"            # General conversation without documentation
+    ESCALATE_HUMAN_AGENT = "escalate_human_agent"  # Route to human agent
 
 
 # Alias for compatibility with requirements specification
@@ -139,6 +138,9 @@ class RouterDecision(BaseModel):
     reasoning: str = Field(..., description="Human-readable explanation of routing decision")
     should_use_rag: bool = Field(..., description="Whether to use RAG pipeline")
     requires_followup: bool = Field(..., description="Whether query needs clarification")
+    
+    # Human escalation fields (for LLM-based routing)
+    escalation_urgency: Optional[str] = Field(None, description="Escalation urgency level: LOW|MEDIUM|HIGH|CRITICAL")
     
     class Config:
         json_schema_extra = {

@@ -6,7 +6,14 @@ This module provides:
 - Prompt template definitions and formatting
 - Model configuration and selection
 - Error handling and retry logic
-- Direct LLM responses for conversational and hybrid queries
+- LLM response generation for different route types
+
+Route Type Mappings:
+- SEARCH_DOCS → generate_knowledge_response (uses RAG context)
+- GENERAL_CHAT → generate_conversational_response (no RAG)
+- ESCALATE_HUMAN_AGENT → handled in router (escalation message)
+
+Legacy methods (hybrid, clarification) are maintained for backward compatibility.
 """
 
 import time
