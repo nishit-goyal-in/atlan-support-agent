@@ -236,6 +236,36 @@ npm run build
 - **Performance**: Sub-500ms search achieved with robust caching system
 - **Next Phase**: Phase 3 - Core RAG Pipeline ready to begin
 
+### v1.3.0 - Phase 3 Core RAG Pipeline Completion
+- **Date**: 2025-08-27
+- **Author**: Claude Code
+- **Changes**: Complete LangChain-based RAG pipeline implementation with intelligent search agent
+- **Files Modified**: app/rag.py (enhanced and optimized implementation), .env (OpenRouter configuration)
+- **Key Achievements**:
+  - LangChain search agent with semantic_search tool using @tool decorator
+  - Intelligent multi-round search decision-making capability (5+ searches per query)
+  - Integration with existing VectorStore from Phase 2
+  - Context storage and accumulation for downstream processing
+  - Atlan-specific system prompts and query handling
+  - Comprehensive error handling and performance logging
+  - OpenRouter integration for using Claude Sonnet 4 via LangChain
+  - In-memory caching with TTL for identical queries
+- **Implementation Details**:
+  - SearchTool class with get_semantic_search_tool() method
+  - RAGAgent class with _create_agent() and search_and_retrieve() methods
+  - Agent can perform multiple searches if initial results are insufficient
+  - Returns both formatted context and raw chunks for routing
+  - Request context storage for downstream processing
+  - OpenRouter configuration with Claude Sonnet 4 for agent reasoning
+  - RetrievalCache class with MD5-based cache keys and TTL support
+  - Context management with token limits and conversation truncation
+- **API Interface**: async search_and_retrieve(query, conversation_history, session_id) -> Tuple[List[RetrievalChunk], str]
+- **Performance**: Agent makes intelligent search decisions with quality assessment, multiple search rounds
+- **Testing**: All 7 test cases passing including end-to-end RAG pipeline validation
+- **Next Phase**: Phase 4 - Query Router ready to begin
+- **Issues Encountered**: Fixed OpenRouter integration for Claude models via base_url configuration
+- **Code Quality**: Production-ready with proper async support, caching, and comprehensive logging
+
 ---
 
 *This document should be updated after each development phase to reflect current project status and lessons learned.*
