@@ -961,8 +961,8 @@
             // Format numbered lists
             formatted = formatted.replace(/(\d+\.)\s/g, '<br><strong>$1</strong> ');
             
-            // Format bullet points
-            formatted = formatted.replace(/[-•]\s/g, '<br>• ');
+            // Format bullet points (only at start of lines)
+            formatted = formatted.replace(/(^|<br>)[-•]\s/g, '$1• ');
             
             // Format bold/emphasis markers
             formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
