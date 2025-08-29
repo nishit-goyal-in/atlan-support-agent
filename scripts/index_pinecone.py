@@ -38,7 +38,6 @@ sys.path.insert(0, str(project_root))
 
 try:
     import openai
-    import pinecone
     from pinecone import Pinecone, ServerlessSpec
     from loguru import logger
     from src.app.utils import setup_logging, get_config, Timer
