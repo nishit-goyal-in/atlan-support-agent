@@ -63,7 +63,7 @@ from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from loguru import logger
 
-from pinecone import Pinecone, Index, ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec
 from openai import OpenAI
 
 from src.app.models import (
@@ -270,7 +270,7 @@ class PineconeVectorStore:
         """
         self.config = get_config()
         self.pc_client: Optional[Pinecone] = None
-        self.index: Optional[Index] = None
+        self.index: Optional[Any] = None  # Pinecone Index object
         self.openai_client: Optional[OpenAI] = None
         
         # Performance optimizations
