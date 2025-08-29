@@ -904,6 +904,187 @@
             }
         }
 
+        /* Loading Message Styles */
+        .loading-message {
+            background: linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+            border: 1px solid var(--secondary-200);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin: var(--space-3) 0;
+            max-width: 85%;
+            width: fit-content;
+            min-width: 300px;
+            position: relative;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .loading-message::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        .loading-content {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: var(--space-3);
+            width: 100%;
+        }
+
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            flex: 1;
+            min-width: 0;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: var(--space-1);
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--primary-500);
+            animation: typingAnimation 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        .loading-text-container {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .loading-text {
+            color: var(--text-primary);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            margin: 0;
+            word-wrap: break-word;
+        }
+
+        .loading-stage {
+            color: var(--primary-600);
+            font-weight: 600;
+            margin-top: var(--space-1);
+            font-size: var(--text-xs);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .loading-progress {
+            width: calc(100% - calc(var(--space-4) * 2));
+            height: 3px;
+            background-color: var(--secondary-200);
+            border-radius: var(--radius-full);
+            margin: var(--space-3) var(--space-4) 0;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+            border-radius: var(--radius-full);
+            transition: width 0.5s ease;
+        }
+
+        .cancel-loading {
+            flex-shrink: 0;
+            background: none;
+            border: 1px solid var(--secondary-300);
+            color: var(--text-secondary);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-md);
+            font-size: var(--text-xs);
+            cursor: pointer;
+            opacity: 0;
+            animation: fadeInDelay 8s forwards;
+            height: fit-content;
+            white-space: nowrap;
+            align-self: flex-start;
+        }
+
+        .cancel-loading:hover {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        /* Animations */
+        @keyframes typingAnimation {
+            0%, 60%, 100% {
+                transform: translateY(0);
+                opacity: 0.4;
+            }
+            30% {
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+
+        @keyframes fadeInDelay {
+            0%, 80% {
+                opacity: 0;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+        }
+
+        .loading-message.fade-out {
+            animation: fadeOut 0.3s ease forwards;
+        }
+
+        /* Accessibility: Respect reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            .loading-message::before,
+            .typing-dot,
+            .loading-progress-bar {
+                animation: none;
+            }
+            
+            .loading-indicator {
+                opacity: 0.7;
+            }
+        }
+
         /* Custom Scrollbar */
         .chat-messages::-webkit-scrollbar,
         .evaluation-content::-webkit-scrollbar {
@@ -1037,6 +1218,305 @@
         let messageHistory = [];
         let evaluationPollingInterval = null;
         let activeMessageIds = new Set();
+        let currentLoadingManager = null;
+        let loadingMessageId = 0;
+
+        // Chat Loading Manager Class
+        class ChatLoadingManager {
+            constructor(queryType = 'general') {
+                this.queryType = queryType;
+                this.currentStage = 0;
+                this.startTime = Date.now();
+                this.loadingElement = null;
+                this.stageTimers = [];
+                this.cancelled = false;
+                this.messageId = `loading-${++loadingMessageId}`;
+                
+                // Define loading stages based on query type
+                this.stages = this.getStagesForQueryType(queryType);
+                
+                this.createLoadingMessage();
+                this.startProgressionTimer();
+            }
+
+            getStagesForQueryType(queryType) {
+                const stages = {
+                    search_docs: [
+                        { text: 'Analyzing your question...', duration: 2000, progress: 20 },
+                        { text: 'Searching Atlan documentation...', duration: 4000, progress: 50 },
+                        { text: 'Retrieving relevant sources...', duration: 3000, progress: 75 },
+                        { text: 'Generating comprehensive response...', duration: 8000, progress: 95 }
+                    ],
+                    general_chat: [
+                        { text: 'Understanding your question...', duration: 1500, progress: 30 },
+                        { text: 'Processing with AI assistant...', duration: 5000, progress: 80 },
+                        { text: 'Finalizing response...', duration: 2000, progress: 95 }
+                    ],
+                    escalate_human_agent: [
+                        { text: 'Analyzing escalation requirement...', duration: 1000, progress: 25 },
+                        { text: 'Preparing context for human agent...', duration: 2000, progress: 60 },
+                        { text: 'Connecting you with support...', duration: 3000, progress: 90 }
+                    ],
+                    default: [
+                        { text: 'Processing your request...', duration: 2000, progress: 40 },
+                        { text: 'Generating response securely...', duration: 6000, progress: 85 }
+                    ]
+                };
+                
+                return stages[queryType] || stages.default;
+            }
+
+            createLoadingMessage() {
+                const chatMessages = document.getElementById('chatMessages');
+                
+                // Hide welcome state if present
+                hideWelcomeState();
+                
+                this.loadingElement = document.createElement('div');
+                this.loadingElement.className = 'message assistant loading-message';
+                this.loadingElement.id = this.messageId;
+                this.loadingElement.setAttribute('aria-live', 'polite');
+                this.loadingElement.setAttribute('aria-label', 'AI assistant is processing your message');
+                
+                this.loadingElement.innerHTML = `
+                    <div class="loading-content">
+                        <div class="loading-indicator">
+                            <div class="typing-dots">
+                                <div class="typing-dot"></div>
+                                <div class="typing-dot"></div>
+                                <div class="typing-dot"></div>
+                            </div>
+                            <div class="loading-text-container">
+                                <div class="loading-text" id="${this.messageId}-text">${this.stages[0].text}</div>
+                                <div class="loading-stage" id="${this.messageId}-stage">INITIALIZING</div>
+                            </div>
+                        </div>
+                        <button class="cancel-loading" onclick="cancelLoading('${this.messageId}')" 
+                                title="Cancel this request" aria-label="Cancel request">Cancel</button>
+                    </div>
+                    <div class="loading-progress">
+                        <div class="loading-progress-bar" id="${this.messageId}-progress" style="width: 5%"></div>
+                    </div>
+                `;
+                
+                chatMessages.appendChild(this.loadingElement);
+                this.scrollToBottom();
+            }
+
+            startProgressionTimer() {
+                this.stages.forEach((stage, index) => {
+                    const delay = this.stages.slice(0, index).reduce((sum, s) => sum + s.duration, 0);
+                    
+                    const timer = setTimeout(() => {
+                        if (!this.cancelled) {
+                            this.updateStage(index, stage);
+                        }
+                    }, delay);
+                    
+                    this.stageTimers.push(timer);
+                });
+                
+                // Show time estimate for longer operations
+                if (this.getTotalDuration() > 8000) {
+                    const estimateTimer = setTimeout(() => {
+                        if (!this.cancelled) {
+                            this.showTimeEstimate();
+                        }
+                    }, 8000);
+                    this.stageTimers.push(estimateTimer);
+                }
+            }
+
+            updateStage(stageIndex, stage) {
+                const textElement = document.getElementById(`${this.messageId}-text`);
+                const stageElement = document.getElementById(`${this.messageId}-stage`);
+                const progressElement = document.getElementById(`${this.messageId}-progress`);
+                
+                if (textElement && stageElement && progressElement) {
+                    textElement.textContent = stage.text;
+                    stageElement.textContent = this.getStageLabel(stageIndex);
+                    progressElement.style.width = `${stage.progress}%`;
+                }
+                
+                this.currentStage = stageIndex;
+            }
+
+            getStageLabel(stageIndex) {
+                const labels = ['ANALYZING', 'SEARCHING', 'RETRIEVING', 'GENERATING', 'FINALIZING'];
+                return labels[stageIndex] || 'PROCESSING';
+            }
+
+            showTimeEstimate() {
+                const elapsed = Date.now() - this.startTime;
+                const estimated = this.getTotalDuration();
+                const remaining = Math.max(0, Math.ceil((estimated - elapsed) / 1000));
+                
+                const stageElement = document.getElementById(`${this.messageId}-stage`);
+                if (stageElement && remaining > 0) {
+                    stageElement.textContent = `EST. ${remaining}S REMAINING`;
+                }
+            }
+
+            getTotalDuration() {
+                return this.stages.reduce((sum, stage) => sum + stage.duration, 0);
+            }
+
+            replaceWithResponse(response, data) {
+                if (this.cancelled || !this.loadingElement) return;
+                
+                // Clean up timers
+                this.cleanup();
+                
+                // Create the actual response message using EXACTLY the same structure as addMessageToChat
+                const responseElement = document.createElement('div');
+                responseElement.className = 'message assistant';
+                
+                // Format content with proper line breaks and structure (same as addMessageToChat)
+                const formattedContent = formatMessageContent(response, 'assistant');
+                
+                let messageHtml = `
+                    <div class="message-content">${formattedContent}</div>
+                    <div class="message-meta">
+                        ${new Date().toLocaleTimeString()}
+                `;
+                
+                // Use EXACT same metadata logic as addMessageToChat
+                if (data) {
+                    // Get routing details from metadata (identical to addMessageToChat)
+                    const routingDecision = data.metadata?.routing_decision || {};
+                    const routeType = data.route_type || routingDecision.route_type || 'unknown';
+                    const confidence = data.confidence_score || routingDecision.confidence || 0;
+                    const reasoning = routingDecision.reasoning || data.metadata?.classification_reasoning || '';
+                    
+                    messageHtml += `
+                        <div class="routing-info">
+                            <div class="routing-decision">
+                                <span class="routing-badge ${routeType.toLowerCase()}">${routeType.toUpperCase()}</span>
+                                <span class="confidence" title="Confidence in the routing decision">Confidence: ${(confidence * 100).toFixed(1)}%</span>
+                            </div>
+                    `;
+                    
+                    // Add reasoning if available (identical to addMessageToChat)
+                    if (reasoning) {
+                        messageHtml += `
+                            <div class="routing-reasoning">
+                                <strong>AI Reasoning:</strong> ${escapeHtml(reasoning)}
+                            </div>
+                        `;
+                    }
+                    
+                    // Add trigger information based on route type (identical to addMessageToChat)
+                    let trigger = '';
+                    if (routeType === 'search_docs') {
+                        trigger = data.sources_count > 0 ? 
+                            `Found ${data.sources_count} relevant documentation source${data.sources_count !== 1 ? 's' : ''}` : 
+                            'Searching documentation for technical query';
+                    } else if (routeType === 'general_chat') {
+                        trigger = 'General conversation - no documentation search needed';
+                    } else if (routeType === 'escalate_human_agent') {
+                        trigger = 'Routing to human agent for specialized assistance';
+                    }
+                    // Legacy route support (for backward compatibility)
+                    else if (routeType === 'knowledge_based') {
+                        trigger = data.sources_count > 0 ? 
+                            `Found ${data.sources_count} relevant documentation source${data.sources_count !== 1 ? 's' : ''}` : 
+                            'Using knowledge base for documentation query';
+                    } else if (routeType === 'conversational') {
+                        trigger = 'No relevant documentation found - using conversational response';
+                    } else if (routeType === 'hybrid') {
+                        trigger = 'Combining documentation with conversational context';
+                    } else if (routeType === 'clarification') {
+                        trigger = 'Query needs clarification';
+                    }
+                    
+                    if (trigger) {
+                        messageHtml += `
+                            <div class="routing-trigger">
+                                <span class="trigger-icon">ℹ️</span> <strong>Trigger:</strong> ${trigger}
+                            </div>
+                        `;
+                    }
+                    
+                    messageHtml += `</div>`;
+                    
+                    if (data.sources && data.sources.length > 0) {
+                        messageHtml += `
+                            <div class="sources-info">
+                                📚 ${data.sources_count} source${data.sources_count !== 1 ? 's' : ''} used
+                            </div>
+                        `;
+                    }
+                    
+                    if (data.performance) {
+                        messageHtml += `
+                            <div class="performance-info">
+                                <span>Total: ${data.performance.total_time_ms}ms</span>
+                                <span>RAG: ${data.performance.rag_search_time_ms || 0}ms</span>
+                                <span>LLM: ${data.performance.llm_generation_time_ms}ms</span>
+                            </div>
+                        `;
+                    }
+                }
+                
+                messageHtml += `</div>`;
+                responseElement.innerHTML = messageHtml;
+                
+                // Smooth transition
+                this.loadingElement.classList.add('fade-out');
+                
+                setTimeout(() => {
+                    if (this.loadingElement && this.loadingElement.parentNode) {
+                        this.loadingElement.parentNode.replaceChild(responseElement, this.loadingElement);
+                    }
+                    this.scrollToBottom();
+                    
+                    // Store in history (same as addMessageToChat)
+                    messageHistory.push({
+                        role: 'assistant',
+                        content: response,
+                        timestamp: new Date(),
+                        metadata: data
+                    });
+                }, 300);
+            }
+
+            cancel() {
+                this.cancelled = true;
+                this.cleanup();
+                
+                if (this.loadingElement && this.loadingElement.parentNode) {
+                    this.loadingElement.classList.add('fade-out');
+                    setTimeout(() => {
+                        if (this.loadingElement && this.loadingElement.parentNode) {
+                            this.loadingElement.parentNode.removeChild(this.loadingElement);
+                        }
+                    }, 300);
+                }
+            }
+
+            cleanup() {
+                this.stageTimers.forEach(timer => clearTimeout(timer));
+                this.stageTimers = [];
+            }
+
+            scrollToBottom() {
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Cancel loading function (global)
+        function cancelLoading(messageId) {
+            if (currentLoadingManager && currentLoadingManager.messageId === messageId) {
+                currentLoadingManager.cancel();
+                currentLoadingManager = null;
+                
+                // Re-enable send button
+                const sendBtn = document.getElementById('sendBtn');
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            }
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
@@ -1147,6 +1627,47 @@
             });
         }
 
+        // Detect query type for appropriate loading experience
+        function detectQueryType(message) {
+            const lowerMessage = message.toLowerCase();
+            
+            // Check for human escalation triggers
+            const escalationTriggers = [
+                'talk to someone', 'speak to human', 'human agent', 'connect me to support',
+                'billing', 'payment', 'invoice', 'subscription', 'account issue',
+                'security breach', 'data loss', 'production down', 'critical issue'
+            ];
+            
+            if (escalationTriggers.some(trigger => lowerMessage.includes(trigger))) {
+                return 'escalate_human_agent';
+            }
+            
+            // Check for documentation search queries
+            const searchTriggers = [
+                'how to', 'setup', 'configure', 'connect', 'install', 'troubleshoot',
+                'connector', 'integration', 'lineage', 'metadata', 'crawl', 'workflow',
+                'snowflake', 'tableau', 'bigquery', 'power bi', 'databricks',
+                'authentication', 'sso', 'api', 'webhook'
+            ];
+            
+            if (searchTriggers.some(trigger => lowerMessage.includes(trigger))) {
+                return 'search_docs';
+            }
+            
+            // General chat for greetings, simple questions
+            const generalTriggers = [
+                'hello', 'hi', 'hey', 'what is atlan', 'thank you', 'thanks',
+                'goodbye', 'bye', 'help', 'overview'
+            ];
+            
+            if (generalTriggers.some(trigger => lowerMessage.includes(trigger))) {
+                return 'general_chat';
+            }
+            
+            // Default to search_docs for most technical queries
+            return 'search_docs';
+        }
+
         async function sendMessage() {
             const messageInput = document.getElementById('messageInput');
             const sessionInput = document.getElementById('sessionInput');
@@ -1157,17 +1678,23 @@
 
             const sessionId = sessionInput.value.trim() || currentSessionId;
             
+            // Detect query type for appropriate loading experience
+            const queryType = detectQueryType(message);
+            
             // Update UI
             sendBtn.disabled = true;
-            sendBtn.textContent = 'Sending...';
+            sendBtn.textContent = 'Sent ✓';
             
             // Add user message to chat
             addMessageToChat('user', message);
             messageInput.value = '';
             messageInput.style.height = 'auto';
             
+            // Start loading experience immediately
+            currentLoadingManager = new ChatLoadingManager(queryType);
+            
             try {
-                console.log('Sending message:', { message, sessionId });
+                console.log('Sending message:', { message, sessionId, queryType });
                 
                 const response = await fetch('/chat', {
                     method: 'POST',
@@ -1187,8 +1714,11 @@
                 const data = await response.json();
                 console.log('Received response:', data);
                 
-                // Add assistant message to chat
-                addMessageToChat('assistant', data.response, data);
+                // Replace loading message with actual response
+                if (currentLoadingManager) {
+                    currentLoadingManager.replaceWithResponse(data.response, data);
+                    currentLoadingManager = null;
+                }
                 
                 // Track message for evaluation
                 if (data.message_id) {
@@ -1208,8 +1738,16 @@
 
             } catch (error) {
                 console.error('Error sending message:', error);
+                
+                // Cancel loading and show error
+                if (currentLoadingManager) {
+                    currentLoadingManager.cancel();
+                    currentLoadingManager = null;
+                }
+                
                 addErrorMessage(`Failed to send message: ${error.message}`);
             } finally {
+                // Re-enable send button
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send';
             }
@@ -1536,6 +2074,7 @@
         window.refreshEvaluations = refreshEvaluations;
         window.handleKeyPress = handleKeyPress;
         window.insertExampleQuery = insertExampleQuery;
+        window.cancelLoading = cancelLoading;
     </script>
 </body>
 </html>
