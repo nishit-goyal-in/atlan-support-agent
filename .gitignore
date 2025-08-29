@@ -6,3 +6,5 @@ __pycache__/
 indexing_progress.json
 debug_*.py
 test_*.py
+docs/notes.md
+docs/PRD.md

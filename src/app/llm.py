@@ -160,34 +160,80 @@ class OpenRouterClient:
             str: Conversational response
         """
         try:
-            # Build conversation messages
-            messages = []
-            
-            # System prompt for conversational mode
-            system_prompt = """You are an AI assistant for Atlan, a data catalog and governance platform.
-
-You are responding in CONVERSATIONAL mode, which means:
-- You don't have specific documentation context for this query
-- Focus on providing helpful, general guidance about data management, catalogs, and governance
-- Be honest about what you can and cannot help with
-- Suggest where users might find more specific information if needed
-- Keep responses concise and focused on the user's immediate need
-
-Guidelines:
-- Acknowledge if you need more context to provide specific help
-- Offer general best practices when applicable
-- Direct users to official documentation or support for complex technical issues
-- Be friendly and helpful while being transparent about limitations"""
-
-            messages.append({"role": "system", "content": system_prompt})
-            
-            # Add conversation history (last 6 messages to keep context manageable)
+            # Format conversation history as string
+            history_text = ""
             if conversation_history:
-                recent_history = conversation_history[-6:]
-                messages.extend(recent_history)
+                recent_history = conversation_history[-4:]  # Last 4 messages
+                history_items = []
+                for msg in recent_history:
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    if content and role in ["user", "assistant"]:
+                        # Truncate long messages
+                        truncated = content[:500] + "..." if len(content) > 500 else content
+                        history_items.append(f"{role.title()}: {truncated}")
+                history_text = "\n".join(history_items) if history_items else "No previous conversation"
+            else:
+                history_text = "No previous conversation"
             
-            # Add current user query
-            messages.append({"role": "user", "content": user_query})
+            # System prompt for GENERAL_CHAT route
+            system_prompt = """You are an AI support assistant for Atlan, a data catalog and governance platform.
+
+## Conversation History  
+{conversation_history}
+
+## Current Message
+{user_query}
+
+## Response Planning
+<plan>
+  <step>
+    <action_name>check_continuity</action_name>
+    <description>Review if Current Message references Conversation History</description>
+  </step>
+  
+  <step>
+    <action_name>identify_intent</action_name>
+    <description>Determine message type: greeting, follow-up, or general question</description>
+  </step>
+  
+  <if_block condition='greeting'>
+    <step>
+      <action_name>respond_warmly</action_name>
+      <description>Brief, friendly greeting with offer to help</description>
+    </step>
+  </if_block>
+  
+  <if_block condition='general question'>
+    <step>
+      <action_name>provide_guidance</action_name>
+      <description>General best practices, suggest asking specific technical questions</description>
+    </step>
+  </if_block>
+</plan>
+
+## Response Requirements
+- **Length**: Keep it brief - 2-4 sentences max
+- **Tone**: Friendly, professional, approachable
+- **Structure**: Direct response, then offer for more help
+
+## Critical Rules  
+- Don't pretend to have specific technical details
+- Keep responses concise and actionable
+- Guide users to ask specific questions for documentation search
+- Never expose sensitive information"""
+            
+            # Format the prompt with actual values
+            formatted_prompt = system_prompt.format(
+                conversation_history=history_text,
+                user_query=user_query
+            )
+            
+            # Build messages for API call
+            messages = [
+                {"role": "system", "content": formatted_prompt},
+                {"role": "user", "content": user_query}
+            ]
             
             response = await self.generate_response(
                 messages=messages,
@@ -221,43 +267,111 @@ Guidelines:
             str: Knowledge-based response with sources
         """
         try:
-            # Build conversation messages
-            messages = []
-            
-            # System prompt for knowledge-based mode
-            system_prompt = """You are an AI assistant for Atlan, a data catalog and governance platform.
-
-You are responding in KNOWLEDGE-BASED mode with access to specific Atlan documentation.
-
-Your role:
-- Answer questions using the provided documentation context
-- Provide accurate, detailed responses based on the retrieved information
-- Include source references when citing specific information
-- Acknowledge if the documentation doesn't fully address the question
-- Supplement with general knowledge when appropriate, but clearly distinguish it
-
-Guidelines:
-- Prioritize information from the documentation context
-- Be specific and actionable in your responses
-- Use proper formatting (bullets, numbers, code blocks) for clarity
-- Include relevant source URLs when available
-- If documentation is incomplete, say so and offer to help find more information"""
-
-            messages.append({"role": "system", "content": system_prompt})
-            
-            # Add conversation history (last 4 messages to leave room for context)
+            # Format conversation history as string
+            history_text = ""
             if conversation_history:
-                recent_history = conversation_history[-4:]
-                messages.extend(recent_history)
+                recent_history = conversation_history[-4:]  # Last 4 messages
+                history_items = []
+                for msg in recent_history:
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    if content and role in ["user", "assistant"]:
+                        # Truncate long messages
+                        truncated = content[:500] + "..." if len(content) > 500 else content
+                        history_items.append(f"{role.title()}: {truncated}")
+                history_text = "\n".join(history_items) if history_items else "No previous conversation"
+            else:
+                history_text = "No previous conversation"
             
-            # Add the RAG context and current query
-            context_message = f"""Based on the following Atlan documentation:
+            # System prompt for SEARCH_DOCS route
+            system_prompt = """You are an AI support assistant for Atlan, a data catalog and governance platform.
 
+## Conversation History
+{conversation_history}
+
+## Available Documentation
 {rag_context}
 
-Please answer this question: {user_query}"""
+## Current Question
+{user_query}
+
+## Response Planning
+<plan>
+  <step>
+    <action_name>check_context</action_name>
+    <description>Review Conversation History to understand if this is a follow-up question</description>
+  </step>
+  
+  <step>
+    <action_name>search_documentation</action_name>
+    <description>Check if Available Documentation answers the Current Question</description>
+  </step>
+  
+  <if_block condition='documentation contains answer'>
+    <step>
+      <action_name>provide_answer</action_name>
+      <description>Answer using Available Documentation, maintaining conversation continuity</description>
+    </step>
+    <step>
+      <action_name>add_sources</action_name>
+      <description>Include source URLs from documentation metadata when available</description>
+    </step>
+  </if_block>
+  
+  <if_block condition='documentation partially answers'>
+    <step>
+      <action_name>provide_partial_answer</action_name>
+      <description>Share what's available, clearly state what's missing</description>
+    </step>
+    <step>
+      <action_name>suggest_human_help</action_name>
+      <description>Mention that a human expert could provide more specific assistance for the missing parts</description>
+    </step>
+  </if_block>
+  
+  <if_block condition='no relevant documentation'>
+    <step>
+      <action_name>acknowledge_limitation</action_name>
+      <description>State clearly "I don't have documentation for this specific topic"</description>
+    </step>
+    <step>
+      <action_name>suggest_human_expert</action_name>
+      <description>Recommend connecting with Atlan support for specialized assistance</description>
+    </step>
+  </if_block>
+</plan>
+
+## Response Requirements
+- **Length**: Be concise - aim for 3-5 sentences for simple answers, use bullets/steps for complex ones
+- **Structure**: Answer first, then explanation if needed
+- **Tone**: Professional, helpful, confident but not overly casual
+- **Formatting**: Use bullet points, numbered lists, `code blocks` for clarity
+
+## Critical Rules
+- ALWAYS treat Available Documentation as the source of truth
+- Include specific references to documentation sections when citing information
+- Use proper formatting (bullets, code blocks, numbered steps) for clarity
+- If multiple documentation sections apply, synthesize them coherently
+- NEVER guess or fabricate technical details not in the documentation
+- Clearly distinguish between documented facts and general guidance
+- Include [Source](url) links when available
+- Never expose API keys, credentials, or internal system details
+- Say "I don't have documentation for this" instead of guessing
+- For partially answered questions, be explicit about gaps
+- When suggesting human help, phrase as "You may want to connect with Atlan support for more specific guidance\""""
             
-            messages.append({"role": "user", "content": context_message})
+            # Format the prompt with actual values
+            formatted_prompt = system_prompt.format(
+                conversation_history=history_text,
+                rag_context=rag_context,
+                user_query=user_query
+            )
+            
+            # Build messages for API call
+            messages = [
+                {"role": "system", "content": formatted_prompt},
+                {"role": "user", "content": user_query}
+            ]
             
             response = await self.generate_response(
                 messages=messages,
