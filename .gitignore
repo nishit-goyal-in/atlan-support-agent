@@ -8,3 +8,4 @@ debug_*.py
 test_*.py
 docs/notes.md
 docs/PRD.md
+.claude/
